@@ -106,7 +106,7 @@ export default function Sidebar({ onSelectProduct, selectedProduct, isLoading }:
     setActiveCategory(newItem.category);
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const handleDelete = (id: string, e: React.MouseEvent | React.SyntheticEvent) => {
     e.stopPropagation();
     const updated = wardrobe.filter(p => p.id !== id);
     setWardrobe(updated);
@@ -245,12 +245,12 @@ export default function Sidebar({ onSelectProduct, selectedProduct, isLoading }:
                         </div>
                       )}
                       {/* Delete button */}
-                      <button
-                        onClick={(e) => handleDelete(product.id, e)}
-                        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      <div
+                        onClick={(e) => handleDelete(product.id, e as unknown as React.MouseEvent)}
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                         style={{ background: "rgba(239,68,68,0.8)", backdropFilter: "blur(4px)" }}>
                         <Trash2 size={12} className="text-white" />
-                      </button>
+                      </div>
                     </div>
                     {/* Info */}
                     <div className="p-2.5">
