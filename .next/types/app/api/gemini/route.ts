@@ -1,4 +1,4 @@
-// File: C:\Users\cpu\Desktop\ainek_mvp\ainek_mvp_claude\ainek\src\app\api\gemini\route.ts
+// File: C:\Users\cpu\Desktop\ainek_mvp_claude\ainek\src\app\api\gemini\route.ts
 import * as entry from '../../../../../src/app/api/gemini/route.js'
 import type { NextRequest } from 'next/server.js'
 
