@@ -42,6 +42,7 @@ STRICT RULES:
 - ONLY change the clothing to the item shown in Image 2
 - Do NOT generate a new person or change the viewpoint
 - Result must look like the original photo but with different clothes
+- The print or pattern must adjust to the folds and shape of the clothing as it would in real life
 
 Output: The edited photo of the same person wearing the new clothing.`,
       });
