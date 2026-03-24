@@ -29,21 +29,30 @@ export function stopCamera(stream: MediaStream | null): void {
   stream.getTracks().forEach((track) => track.stop());
 }
 
+// Optimized capture: resize to max 1024px wide, JPEG quality 0.7
 export function captureFrame(
   videoElement: HTMLVideoElement,
-  quality = 0.92
+  maxWidth = 1024,
+  quality = 0.7
 ): string {
+  const srcW = videoElement.videoWidth || 1280;
+  const srcH = videoElement.videoHeight || 720;
+
+  const scale = Math.min(1, maxWidth / srcW);
+  const w = Math.round(srcW * scale);
+  const h = Math.round(srcH * scale);
+
   const canvas = document.createElement("canvas");
-  canvas.width = videoElement.videoWidth || 1280;
-  canvas.height = videoElement.videoHeight || 720;
+  canvas.width = w;
+  canvas.height = h;
 
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not get canvas context");
 
   // Mirror horizontally (selfie-mode)
-  ctx.translate(canvas.width, 0);
+  ctx.translate(w, 0);
   ctx.scale(-1, 1);
-  ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(videoElement, 0, 0, w, h);
 
   return canvas.toDataURL("image/jpeg", quality);
 }
@@ -61,7 +70,9 @@ export async function tryOnOutfit(
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || "Failed to generate try-on");
+    const err = new Error(error.error || "Failed to generate try-on") as Error & { status: number };
+    err.status = response.status;
+    throw err;
   }
 
   return response.json();
