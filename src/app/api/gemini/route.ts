@@ -89,7 +89,7 @@ OUTPUT: One photorealistic image of the same person wearing "${clothingName}". I
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-image-generation",
+      model: "gemini-3.1-flash-image-preview",
       contents: [{ role: "user", parts: parts as never }],
       config: {
         responseModalities: [Modality.TEXT, Modality.IMAGE],
@@ -118,7 +118,7 @@ OUTPUT: One photorealistic image of the same person wearing "${clothingName}". I
     return NextResponse.json({
       success: true,
       generatedImage: generatedImageBase64,
-      text: textResponse,
+      text: textResponse, 
     });
 
   } catch (error) {
