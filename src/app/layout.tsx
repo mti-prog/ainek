@@ -11,7 +11,6 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "AINEK — Умное Зеркало",
   description: "Интеллектуальное зеркало для виртуальной примерки одежды с технологией AI",
-  manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

@@ -29,8 +29,8 @@ export async function POST(req: NextRequest) {
     if (!imageBase64) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 });
     }
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
+    if (API_KEYS.length === 0) {
+      return NextResponse.json({ error: "No API keys configured" }, { status: 500 });
     }
 
     const personImageData = imageBase64.replace(/^data:image\/\w+;base64,/, "");
