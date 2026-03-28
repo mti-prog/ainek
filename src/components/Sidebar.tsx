@@ -293,7 +293,7 @@ export default function Sidebar({ onSelectProduct, selectedProduct, isLoading }:
                       <p className="text-white/25 text-xs">JPG, PNG, WEBP</p>
                     </div>
                 }
-                <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
                   onChange={(e) => e.target.files?.[0] && handleFileChange(e.target.files[0])} />
               </div>
 
