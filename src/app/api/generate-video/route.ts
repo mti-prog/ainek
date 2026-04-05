@@ -138,13 +138,25 @@ OUTPUT: One photorealistic image. Exact same framing as input. Person wearing "$
 const GLASSES_MOTION_PROMPT =
   "The person slowly turns their head to the left side (approximately 45°), returns to center, then slowly turns to the right side (approximately 45°), and returns to center. Smooth and natural movement, lasting 6–8 seconds total. CRITICAL: ALL worn items must maintain reference photo quality throughout: EYEWEAR: frame detail, lens clarity, transparency, and reflections must stay razor-sharp — no blur, no darkening, no loss of frame texture at any angle. CLOTHING: fabric texture and color must remain identical to the reference photo. HEADWEAR: shape, texture, logo detail must be fully preserved. Do NOT degrade the quality of any worn item. The body remains still. Camera is fixed.";
 
+const HEADWEAR_MOTION_PROMPT =
+  "Generate only the exact framing shown in the user's original photo. Do NOT add, extend, or generate any body parts below the frame of the reference photo. If the user's photo shows only the head and shoulders — generate only the head and shoulders. Nothing below. The person makes subtle, natural head movements — slightly tilting the head left, then right, then a gentle nod forward to show the top of the headwear, returning to center. Movement is smooth and calm, lasting 6–8 seconds total, clearly showing the headwear from the front, slight left and right angles, and the top. CRITICAL: The headwear texture, logo, color, fabric, stitching, and shape must remain razor-sharp and identical to the reference photo throughout the entire video — no blur, no darkening, no loss of detail at any angle. The person's face and identity remain 100% consistent. The body remains still. Camera is fixed.";
+
 const GLASSES_CATEGORIES = new Set(["glasses", "sunglasses", "eyewear", "goggles"]);
+const HEADWEAR_CATEGORIES = new Set(["hat", "cap", "headwear", "headgear", "beanie", "helmet"]);
 
 function isEyewear(category: string, name: string): boolean {
   const cat = category.toLowerCase();
   const nm = name.toLowerCase();
   return GLASSES_CATEGORIES.has(cat) ||
     nm.includes("glass") || nm.includes("sunglass") || nm.includes("goggle") || nm.includes("очки");
+}
+
+function isHeadwear(category: string, name: string): boolean {
+  const cat = category.toLowerCase();
+  const nm = name.toLowerCase();
+  return HEADWEAR_CATEGORIES.has(cat) ||
+    nm.includes("hat") || nm.includes("cap") || nm.includes("beanie") ||
+    nm.includes("шапк") || nm.includes("кепк") || nm.includes("панам") || nm.includes("шляп");
 }
 
 async function generateVeoVideo(
@@ -156,8 +168,11 @@ async function generateVeoVideo(
 ): Promise<string> {
   const apiKey = getCurrentKey();
   const eyewear = isEyewear(clothingCategory, clothingName);
+  const headwear = !eyewear && isHeadwear(clothingCategory, clothingName);
   const motionDescription = eyewear
     ? GLASSES_MOTION_PROMPT
+    : headwear
+    ? HEADWEAR_MOTION_PROMPT
     : (MOTION_PROMPTS[motionType] || MOTION_PROMPTS.turn360);
   const outfitDescription = clothingName || "the outfit";
   const prompt = `Fashion virtual try-on video. The person is wearing ${outfitDescription}. ${motionDescription} The outfit fits naturally with realistic fabric physics and gravity. The person's face and identity remain 100% consistent throughout. CRITICAL QUALITY RULE: The visual quality, sharpness, texture, color accuracy, and material detail of ALL worn items must be IDENTICAL to the user's original reference photo at every single frame of the video: CLOTHING: fabric texture, stitching, pattern, color, material finish must be razor-sharp. FOOTWEAR: sole detail, material texture, color, shape must exactly match the reference. HEADWEAR: fabric, logo, shape, texture, color must be fully preserved with no blur. EYEWEAR: frame detail, lens clarity, transparency, reflections must stay crystal clear. Do NOT blur, soften, darken, oversaturate, or degrade ANY worn item under any motion or lighting condition. Match the exact brightness, contrast, sharpness, and color tone of the user's reference photo throughout the entire video. Photorealistic, fashion editorial quality. Lighting is consistent with the reference frame.`;
