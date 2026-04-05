@@ -62,6 +62,15 @@ PERSON (preserve exactly):
 - Camera angle, pose, framing — unchanged
 - Background and environment — unchanged
 
+FRAMING (critical):
+- Generate only the exact framing and crop shown in the input photo
+- Do not extend, complete, or infer any part of the body not visible in the input
+- If the photo shows head and shoulders only — output head and shoulders only
+- If the photo shows waist up — output waist up only
+- If the photo shows full body — output full body
+- Never add legs, feet, or any body parts not present in the original image
+- Output crop and aspect ratio must precisely match the input photo
+
 CLOTHING INTEGRATION:
 - Garment must conform to the body: follow shoulders, chest, waist curves naturally
 - Fabric must drape with gravity: natural folds, creases, movement
@@ -85,7 +94,7 @@ COLOR THEORY & TONE MATCHING (critical — most common failure point):
 - The garment must look like it was photographed in the exact same conditions as the person, not composited from a studio product shot
 - Check: if you removed the garment mentally, the lighting and tone should feel continuous with the skin, hair, and background
 
-OUTPUT: One photorealistic image. The person wearing the garment. Indistinguishable from a real photo taken in the same location. No compositing artifacts, no flat areas, no pasted-on prints, no color mismatch.`,
+OUTPUT: One photorealistic image. Exact same framing as input. The person wearing the garment. Indistinguishable from a real photo. No compositing artifacts, no flat areas, no pasted-on prints, no color mismatch.`,
       });
     } else {
       parts.push({
@@ -99,6 +108,15 @@ PERSON (preserve exactly):
 - Face, skin tone, hair, body proportions — unchanged
 - Camera angle, pose, framing — unchanged
 - Background and environment — unchanged
+
+FRAMING (critical):
+- Generate only the exact framing and crop shown in the input photo
+- Do not extend, complete, or infer any part of the body not visible in the input
+- If the photo shows head and shoulders only — output head and shoulders only
+- If the photo shows waist up — output waist up only
+- If the photo shows full body — output full body
+- Never add legs, feet, or any body parts not present in the original image
+- Output crop and aspect ratio must precisely match the input photo
 
 CLOTHING INTEGRATION:
 - Garment conforms naturally to the body curves and silhouette
@@ -121,7 +139,7 @@ COLOR THEORY & TONE MATCHING (critical — most common failure point):
 - The garment must look photographed in the exact same conditions as the person, not composited from a studio product shot
 - Check: the lighting and tone must feel continuous with the skin, hair, and background
 
-OUTPUT: One photorealistic image of the same person wearing "${clothingName}". Indistinguishable from a real photo. No artifacts, no flat areas, no color mismatch.`,
+OUTPUT: One photorealistic image of the same person wearing "${clothingName}". Exact same framing as input. Indistinguishable from a real photo. No artifacts, no flat areas, no color mismatch.`,
       });
     }
 

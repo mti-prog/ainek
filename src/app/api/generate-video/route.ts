@@ -53,6 +53,15 @@ PERSON (preserve exactly):
 - Camera angle, pose, framing — unchanged
 - Background and environment — unchanged
 
+FRAMING (critical):
+- Generate only the exact framing and crop shown in the input photo
+- Do not extend, complete, or infer any part of the body not visible in the input
+- If the photo shows head and shoulders only — output head and shoulders only
+- If the photo shows waist up — output waist up only
+- If the photo shows full body — output full body
+- Never add legs, feet, or any body parts not present in the original image
+- Output crop and aspect ratio must precisely match the input photo
+
 CLOTHING INTEGRATION:
 - Garment must conform to the body naturally
 - Fabric drapes with gravity: natural folds, creases
@@ -68,7 +77,7 @@ COLOR TONE MATCHING:
 - Apply same color grade and tone curve as the rest of the image
 - The garment must look photographed in the same conditions
 
-OUTPUT: One photorealistic portrait image. Full body visible. Person wearing the garment. Indistinguishable from a real photo.`,
+OUTPUT: One photorealistic image. Exact same framing as input. Person wearing the garment. Indistinguishable from a real photo.`,
     });
   } else {
     parts.push({
@@ -83,10 +92,18 @@ PERSON (preserve exactly):
 - Camera angle, pose, framing — unchanged
 - Background and environment — unchanged
 
+FRAMING (critical):
+- Generate only the exact framing and crop shown in the input photo
+- Do not extend, complete, or infer any part of the body not visible in the input
+- If the photo shows head and shoulders only — output head and shoulders only
+- If the photo shows waist up — output waist up only
+- If the photo shows full body — output full body
+- Never add legs, feet, or any body parts not present in the original image
+- Output crop and aspect ratio must precisely match the input photo
+
 CLOTHING INTEGRATION:
 - Garment conforms naturally to the body
 - Fabric drapes with gravity: natural folds and creases
-- Full body visible in the output
 
 LIGHTING & SHADOWS:
 - Match the light source direction and color temperature from the photo
@@ -97,7 +114,7 @@ COLOR TONE MATCHING:
 - Match garment brightness to the overall photo exposure
 - Apply same color grade as the rest of the image
 
-OUTPUT: One photorealistic portrait image, full body visible. Person wearing "${clothingName}". Indistinguishable from a real photo.`,
+OUTPUT: One photorealistic image. Exact same framing as input. Person wearing "${clothingName}". Indistinguishable from a real photo.`,
     });
   }
 
