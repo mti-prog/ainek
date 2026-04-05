@@ -136,7 +136,7 @@ OUTPUT: One photorealistic image. Exact same framing as input. Person wearing "$
 }
 
 const GLASSES_MOTION_PROMPT =
-  "The person slowly turns their head to the left side (approximately 45°), returns to center, then slowly turns to the right side (approximately 45°), and returns to center. The movement is smooth and natural, lasting 6–8 seconds total, clearly showing the eyewear frame profile, temples, and side design from both sides. The frame texture, lens clarity, color, and material finish of the eyewear must exactly match the quality and detail of the user's original reference photo. The body remains still. Camera is fixed.";
+  "The person slowly turns their head to the left side (approximately 45°), returns to center, then slowly turns to the right side (approximately 45°), and returns to center. Smooth and natural movement, lasting 6–8 seconds total. CRITICAL: ALL worn items must maintain reference photo quality throughout: EYEWEAR: frame detail, lens clarity, transparency, and reflections must stay razor-sharp — no blur, no darkening, no loss of frame texture at any angle. CLOTHING: fabric texture and color must remain identical to the reference photo. HEADWEAR: shape, texture, logo detail must be fully preserved. Do NOT degrade the quality of any worn item. The body remains still. Camera is fixed.";
 
 const GLASSES_CATEGORIES = new Set(["glasses", "sunglasses", "eyewear", "goggles"]);
 
@@ -160,7 +160,7 @@ async function generateVeoVideo(
     ? GLASSES_MOTION_PROMPT
     : (MOTION_PROMPTS[motionType] || MOTION_PROMPTS.turn360);
   const outfitDescription = clothingName || "the outfit";
-  const prompt = `Fashion virtual try-on video. The person is wearing ${outfitDescription}. ${motionDescription} The outfit fits naturally with realistic fabric physics and gravity. The person's face and identity remain 100% consistent throughout. The visual quality, texture detail, and sharpness of the clothing, footwear, headwear, and eyewear must exactly match the resolution and quality of the user's original reference photo — no upscaling, no downgrading, no loss of detail. Photorealistic, fashion editorial quality. Lighting is consistent with the reference frame.`;
+  const prompt = `Fashion virtual try-on video. The person is wearing ${outfitDescription}. ${motionDescription} The outfit fits naturally with realistic fabric physics and gravity. The person's face and identity remain 100% consistent throughout. CRITICAL QUALITY RULE: The visual quality, sharpness, texture, color accuracy, and material detail of ALL worn items must be IDENTICAL to the user's original reference photo at every single frame of the video: CLOTHING: fabric texture, stitching, pattern, color, material finish must be razor-sharp. FOOTWEAR: sole detail, material texture, color, shape must exactly match the reference. HEADWEAR: fabric, logo, shape, texture, color must be fully preserved with no blur. EYEWEAR: frame detail, lens clarity, transparency, reflections must stay crystal clear. Do NOT blur, soften, darken, oversaturate, or degrade ANY worn item under any motion or lighting condition. Match the exact brightness, contrast, sharpness, and color tone of the user's reference photo throughout the entire video. Photorealistic, fashion editorial quality. Lighting is consistent with the reference frame.`;
 
   // Use SDK generateVideos (plural) — correct method name in @google/genai v1.x
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
