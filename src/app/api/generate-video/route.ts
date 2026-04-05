@@ -136,7 +136,7 @@ OUTPUT: One photorealistic image. Exact same framing as input. Person wearing "$
 }
 
 const GLASSES_MOTION_PROMPT =
-  "The person slowly turns their head to the left side (approximately 45°), returns to center, then slowly turns to the right side (approximately 45°), and returns to center. The movement is smooth and natural, lasting 6–8 seconds total, clearly showing the eyewear frame profile, temples, and side design from both sides. The body remains still. Camera is fixed.";
+  "The person slowly turns their head to the left side (approximately 45°), returns to center, then slowly turns to the right side (approximately 45°), and returns to center. The movement is smooth and natural, lasting 6–8 seconds total, clearly showing the eyewear frame profile, temples, and side design from both sides. The frame texture, lens clarity, color, and material finish of the eyewear must exactly match the quality and detail of the user's original reference photo. The body remains still. Camera is fixed.";
 
 const GLASSES_CATEGORIES = new Set(["glasses", "sunglasses", "eyewear", "goggles"]);
 
@@ -160,7 +160,7 @@ async function generateVeoVideo(
     ? GLASSES_MOTION_PROMPT
     : (MOTION_PROMPTS[motionType] || MOTION_PROMPTS.turn360);
   const outfitDescription = clothingName || "the outfit";
-  const prompt = `Fashion virtual try-on video. The person is wearing ${outfitDescription}. ${motionDescription} The outfit fits naturally with realistic fabric physics and gravity. The person's face and identity remain 100% consistent throughout. Photorealistic, fashion editorial quality. Lighting is consistent with the reference frame.`;
+  const prompt = `Fashion virtual try-on video. The person is wearing ${outfitDescription}. ${motionDescription} The outfit fits naturally with realistic fabric physics and gravity. The person's face and identity remain 100% consistent throughout. The visual quality, texture detail, and sharpness of the clothing, footwear, headwear, and eyewear must exactly match the resolution and quality of the user's original reference photo — no upscaling, no downgrading, no loss of detail. Photorealistic, fashion editorial quality. Lighting is consistent with the reference frame.`;
 
   // Use SDK generateVideos (plural) — correct method name in @google/genai v1.x
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
