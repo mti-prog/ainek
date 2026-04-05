@@ -94,7 +94,8 @@ export default function MirrorView() {
                 snapshot,
                 outfitNames,
                 products[0].imageUrl,
-                motionType
+                motionType,
+                products[0].category
               );
               if (result.video) {
                 setGeneratedVideo(result.video);

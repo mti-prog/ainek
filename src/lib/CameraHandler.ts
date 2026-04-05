@@ -86,7 +86,8 @@ export async function generateVideoTryOn(
   personPhotoBase64: string,
   clothingName: string,
   clothingImageBase64: string,
-  motionType: string
+  motionType: string,
+  clothingCategory?: string
 ): Promise<{
   referenceImage: string | null;
   video: string | null;
@@ -100,6 +101,7 @@ export async function generateVideoTryOn(
       clothingName,
       clothingImageBase64,
       motionType,
+      clothingCategory,
     }),
   });
 

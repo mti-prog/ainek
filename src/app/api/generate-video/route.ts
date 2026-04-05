@@ -135,14 +135,30 @@ OUTPUT: One photorealistic image. Exact same framing as input. Person wearing "$
   throw new Error("Gemini did not return a reference frame image");
 }
 
+const GLASSES_MOTION_PROMPT =
+  "The person slowly turns their head to the left side (approximately 45°), returns to center, then slowly turns to the right side (approximately 45°), and returns to center. The movement is smooth and natural, lasting 6–8 seconds total, clearly showing the eyewear frame profile, temples, and side design from both sides. The body remains still. Camera is fixed.";
+
+const GLASSES_CATEGORIES = new Set(["glasses", "sunglasses", "eyewear", "goggles"]);
+
+function isEyewear(category: string, name: string): boolean {
+  const cat = category.toLowerCase();
+  const nm = name.toLowerCase();
+  return GLASSES_CATEGORIES.has(cat) ||
+    nm.includes("glass") || nm.includes("sunglass") || nm.includes("goggle") || nm.includes("очки");
+}
+
 async function generateVeoVideo(
   ai: GoogleGenAI,
   referenceFrameBase64: string,
   clothingName: string,
-  motionType: string
+  motionType: string,
+  clothingCategory: string
 ): Promise<string> {
   const apiKey = getCurrentKey();
-  const motionDescription = MOTION_PROMPTS[motionType] || MOTION_PROMPTS.turn360;
+  const eyewear = isEyewear(clothingCategory, clothingName);
+  const motionDescription = eyewear
+    ? GLASSES_MOTION_PROMPT
+    : (MOTION_PROMPTS[motionType] || MOTION_PROMPTS.turn360);
   const outfitDescription = clothingName || "the outfit";
   const prompt = `Fashion virtual try-on video. The person is wearing ${outfitDescription}. ${motionDescription} The outfit fits naturally with realistic fabric physics and gravity. The person's face and identity remain 100% consistent throughout. Photorealistic, fashion editorial quality. Lighting is consistent with the reference frame.`;
 
@@ -206,6 +222,7 @@ export async function POST(req: NextRequest) {
       clothingName,
       clothingImageBase64,
       motionType = "turn360",
+      clothingCategory = "",
     } = await req.json();
 
     if (!personPhotoBase64) {
@@ -245,7 +262,8 @@ export async function POST(req: NextRequest) {
         ai,
         referenceFrameBase64,
         clothingName || "",
-        motionType
+        motionType,
+        clothingCategory || ""
       );
     } catch (err) {
       veoError = err instanceof Error ? err.message : String(err);
