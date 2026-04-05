@@ -262,8 +262,8 @@ export default function MirrorView() {
 
       {/* RESULT OVERLAY — video */}
       {generatedVideo && isVideoResult && (
-        <div className="absolute inset-0 transition-opacity duration-700 ease-in-out"
-          style={{ opacity: resultVisible ? 1 : 0 }}>
+        <div className="absolute inset-0 flex items-center justify-center transition-opacity duration-700 ease-in-out"
+          style={{ opacity: resultVisible ? 1 : 0, background: "#06060f" }}>
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video
             src={generatedVideo}
@@ -271,10 +271,9 @@ export default function MirrorView() {
             loop
             playsInline
             muted
-            className="absolute inset-0 w-full h-full object-cover"
+            className="h-full w-auto max-w-full"
+            style={{ objectFit: "contain" }}
           />
-          <div className="absolute inset-0"
-            style={{ background: "radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%)" }} />
           {/* Video badge */}
           <div className="absolute top-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1 rounded-full z-10"
             style={{ background: "rgba(139,92,246,0.3)", border: "1px solid rgba(139,92,246,0.5)", backdropFilter: "blur(8px)" }}>
