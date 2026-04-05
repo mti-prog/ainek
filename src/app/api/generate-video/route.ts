@@ -119,6 +119,7 @@ OUTPUT: One photorealistic portrait image, full body visible. Person wearing "${
 }
 
 async function generateVeoVideo(
+  ai: GoogleGenAI,
   referenceFrameBase64: string,
   clothingName: string,
   motionType: string
@@ -128,90 +129,57 @@ async function generateVeoVideo(
   const outfitDescription = clothingName || "the outfit";
   const prompt = `Fashion virtual try-on video. The person is wearing ${outfitDescription}. ${motionDescription} The outfit fits naturally with realistic fabric physics and gravity. The person's face and identity remain 100% consistent throughout. Photorealistic, fashion editorial quality. Lighting is consistent with the reference frame.`;
 
-  // Step 1: Submit job via generateVideos endpoint
-  const submitRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/veo-2.0-generate-001:generateVideos?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: { text: prompt },
-        image: { imageBytes: referenceFrameBase64, mimeType: "image/jpeg" },
-        generationConfig: {
-          aspectRatio: "9:16",
-          numberOfVideos: 1,
-          durationSeconds: 8,
-        },
-      }),
-    }
-  );
+  // Use SDK generateVideos (plural) — correct method name in @google/genai v1.x
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let operation = await (ai.models as any).generateVideos({
+    model: "veo-2.0-generate-001",
+    prompt,
+    image: {
+      imageBytes: referenceFrameBase64,
+      mimeType: "image/jpeg",
+    },
+    config: {
+      aspectRatio: "9:16",
+      numberOfVideos: 1,
+      durationSeconds: 8,
+    },
+  });
 
-  if (!submitRes.ok) {
-    const err = await submitRes.text();
-    throw new Error(`Veo submit failed ${submitRes.status}: ${err}`);
-  }
-
-  const submitJson = await submitRes.json() as { name?: string };
-  const operationName = submitJson.name;
-  if (!operationName) throw new Error(`Veo returned no operation name. Response: ${JSON.stringify(submitJson)}`);
-
-  // Step 2: Poll until done (max 4 minutes)
+  // Poll until done (max 4 minutes)
   const maxWait = 240_000;
   const pollInterval = 10_000;
   const startTime = Date.now();
 
-  while (true) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  while (!(operation as any).done) {
     if (Date.now() - startTime > maxWait) {
       throw new Error("Video generation timed out after 4 minutes");
     }
     await new Promise((r) => setTimeout(r, pollInterval));
-
-    const pollRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/${operationName}?key=${apiKey}`
-    );
-    if (!pollRes.ok) {
-      const err = await pollRes.text();
-      throw new Error(`Veo poll failed ${pollRes.status}: ${err}`);
-    }
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const op = await pollRes.json() as any;
-    console.log("Veo operation state:", JSON.stringify(op).slice(0, 500));
-
-    if (op.error) throw new Error(`Veo error: ${op.error.message}`);
-    if (!op.done) continue;
-
-    // Try all known response shapes
-    const response = op.response ?? op;
-
-    // Shape 1: generatedVideos[].video.uri  (SDK / Gemini AI Studio style)
-    const generatedVideos = response?.generatedVideos as Array<{ video?: { uri?: string; videoBytes?: string } }> | undefined;
-    if (generatedVideos?.length) {
-      const v = generatedVideos[0].video;
-      if (v?.videoBytes) return `data:video/mp4;base64,${v.videoBytes}`;
-      if (v?.uri) {
-        const vRes = await fetch(`${v.uri}&key=${apiKey}`);
-        if (!vRes.ok) throw new Error(`Failed to fetch video URI: ${vRes.status}`);
-        const buf = await vRes.arrayBuffer();
-        return `data:video/mp4;base64,${Buffer.from(buf).toString("base64")}`;
-      }
-    }
-
-    // Shape 2: predictions[].bytesBase64Encoded  (Vertex AI / predictLongRunning style)
-    const predictions = response?.predictions as Array<{ bytesBase64Encoded?: string; videoUri?: string }> | undefined;
-    if (predictions?.length) {
-      const p = predictions[0];
-      if (p.bytesBase64Encoded) return `data:video/mp4;base64,${p.bytesBase64Encoded}`;
-      if (p.videoUri) {
-        const vRes = await fetch(`${p.videoUri}&key=${apiKey}`);
-        if (!vRes.ok) throw new Error(`Failed to fetch video URI: ${vRes.status}`);
-        const buf = await vRes.arrayBuffer();
-        return `data:video/mp4;base64,${Buffer.from(buf).toString("base64")}`;
-      }
-    }
-
-    throw new Error(`Veo done but no video found. Response keys: ${Object.keys(response || {}).join(", ")}`);
+    operation = await (ai.operations as any).getVideosOperation({ operation });
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const op = operation as any;
+  const generatedVideos = op.response?.generatedVideos as Array<{ video?: { uri?: string; videoBytes?: string } }> | undefined;
+
+  if (!generatedVideos?.length) {
+    throw new Error(`Veo returned no videos. Operation keys: ${Object.keys(op.response ?? op).join(", ")}`);
+  }
+
+  const video = generatedVideos[0].video;
+  if (video?.videoBytes) return `data:video/mp4;base64,${video.videoBytes}`;
+
+  if (video?.uri) {
+    const sep = video.uri.includes("?") ? "&" : "?";
+    const vRes = await fetch(`${video.uri}${sep}key=${apiKey}`);
+    if (!vRes.ok) throw new Error(`Failed to fetch video URI: ${vRes.status}`);
+    const buf = await vRes.arrayBuffer();
+    return `data:video/mp4;base64,${Buffer.from(buf).toString("base64")}`;
+  }
+
+  throw new Error("Veo video has no bytes or URI");
 }
 
 export async function POST(req: NextRequest) {
@@ -257,6 +225,7 @@ export async function POST(req: NextRequest) {
 
     try {
       videoDataUrl = await generateVeoVideo(
+        ai,
         referenceFrameBase64,
         clothingName || "",
         motionType
