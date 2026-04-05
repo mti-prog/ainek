@@ -29,30 +29,54 @@ export function stopCamera(stream: MediaStream | null): void {
   stream.getTracks().forEach((track) => track.stop());
 }
 
-// Optimized capture: resize to max 1024px wide, JPEG quality 0.7
+// Capture exactly what the user sees on screen (respects object-fit: cover crop).
+// This ensures the sent image matches the on-screen preview 1:1.
 export function captureFrame(
   videoElement: HTMLVideoElement,
-  maxWidth = 1024,
-  quality = 0.7
+  quality = 0.85
 ): string {
   const srcW = videoElement.videoWidth || 1280;
   const srcH = videoElement.videoHeight || 720;
 
-  const scale = Math.min(1, maxWidth / srcW);
-  const w = Math.round(srcW * scale);
-  const h = Math.round(srcH * scale);
+  // Size of the visible container (what the user actually sees)
+  const containerW = videoElement.clientWidth || srcW;
+  const containerH = videoElement.clientHeight || srcH;
 
+  // object-fit: cover scale factor — the video is scaled so it fully covers the container
+  const scale = Math.max(containerW / srcW, containerH / srcH);
+
+  // The rendered video dimensions (larger than container on at least one axis)
+  const renderedW = srcW * scale;
+  const renderedH = srcH * scale;
+
+  // Crop offsets in rendered-video space (centered)
+  const cropX = (renderedW - containerW) / 2;
+  const cropY = (renderedH - containerH) / 2;
+
+  // Convert back to source-video coordinates for drawImage source rect
+  const srcCropX = cropX / scale;
+  const srcCropY = cropY / scale;
+  const srcCropW = containerW / scale;
+  const srcCropH = containerH / scale;
+
+  // Output canvas matches exactly what was visible
   const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = containerW;
+  canvas.height = containerH;
 
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not get canvas context");
 
-  // Mirror horizontally (selfie-mode)
-  ctx.translate(w, 0);
+  // Mirror horizontally for front camera (selfie-mode) — matches the CSS scaleX(-1)
+  ctx.translate(containerW, 0);
   ctx.scale(-1, 1);
-  ctx.drawImage(videoElement, 0, 0, w, h);
+
+  // Draw only the visible crop of the video
+  ctx.drawImage(
+    videoElement,
+    srcCropX, srcCropY, srcCropW, srcCropH,  // source rect (what's visible)
+    0, 0, containerW, containerH              // destination (full canvas)
+  );
 
   return canvas.toDataURL("image/jpeg", quality);
 }
