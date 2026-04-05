@@ -128,20 +128,18 @@ async function generateVeoVideo(
   const outfitDescription = clothingName || "the outfit";
   const prompt = `Fashion virtual try-on video. The person is wearing ${outfitDescription}. ${motionDescription} The outfit fits naturally with realistic fabric physics and gravity. The person's face and identity remain 100% consistent throughout. Photorealistic, fashion editorial quality. Lighting is consistent with the reference frame.`;
 
-  // Step 1: Submit the job
+  // Step 1: Submit job via generateVideos endpoint
   const submitRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/veo-2.0-generate-001:predictLongRunning?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/veo-2.0-generate-001:generateVideos?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        instances: [{
-          prompt,
-          image: { bytesBase64Encoded: referenceFrameBase64, mimeType: "image/jpeg" },
-        }],
-        parameters: {
+        prompt: { text: prompt },
+        image: { imageBytes: referenceFrameBase64, mimeType: "image/jpeg" },
+        generationConfig: {
           aspectRatio: "9:16",
-          sampleCount: 1,
+          numberOfVideos: 1,
           durationSeconds: 8,
         },
       }),
@@ -153,8 +151,9 @@ async function generateVeoVideo(
     throw new Error(`Veo submit failed ${submitRes.status}: ${err}`);
   }
 
-  const { name: operationName } = await submitRes.json() as { name: string };
-  if (!operationName) throw new Error("Veo returned no operation name");
+  const submitJson = await submitRes.json() as { name?: string };
+  const operationName = submitJson.name;
+  if (!operationName) throw new Error(`Veo returned no operation name. Response: ${JSON.stringify(submitJson)}`);
 
   // Step 2: Poll until done (max 4 minutes)
   const maxWait = 240_000;
@@ -175,24 +174,43 @@ async function generateVeoVideo(
       throw new Error(`Veo poll failed ${pollRes.status}: ${err}`);
     }
 
-    const op = await pollRes.json() as {
-      done?: boolean;
-      error?: { message: string };
-      response?: { predictions?: Array<{ bytesBase64Encoded?: string; mimeType?: string }> };
-    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const op = await pollRes.json() as any;
+    console.log("Veo operation state:", JSON.stringify(op).slice(0, 500));
 
     if (op.error) throw new Error(`Veo error: ${op.error.message}`);
     if (!op.done) continue;
 
-    const prediction = op.response?.predictions?.[0];
-    if (!prediction) throw new Error("Veo returned no predictions");
+    // Try all known response shapes
+    const response = op.response ?? op;
 
-    // Case 1: inline bytes
-    if (prediction.bytesBase64Encoded) {
-      return `data:video/mp4;base64,${prediction.bytesBase64Encoded}`;
+    // Shape 1: generatedVideos[].video.uri  (SDK / Gemini AI Studio style)
+    const generatedVideos = response?.generatedVideos as Array<{ video?: { uri?: string; videoBytes?: string } }> | undefined;
+    if (generatedVideos?.length) {
+      const v = generatedVideos[0].video;
+      if (v?.videoBytes) return `data:video/mp4;base64,${v.videoBytes}`;
+      if (v?.uri) {
+        const vRes = await fetch(`${v.uri}&key=${apiKey}`);
+        if (!vRes.ok) throw new Error(`Failed to fetch video URI: ${vRes.status}`);
+        const buf = await vRes.arrayBuffer();
+        return `data:video/mp4;base64,${Buffer.from(buf).toString("base64")}`;
+      }
     }
 
-    throw new Error("Veo prediction has no video bytes");
+    // Shape 2: predictions[].bytesBase64Encoded  (Vertex AI / predictLongRunning style)
+    const predictions = response?.predictions as Array<{ bytesBase64Encoded?: string; videoUri?: string }> | undefined;
+    if (predictions?.length) {
+      const p = predictions[0];
+      if (p.bytesBase64Encoded) return `data:video/mp4;base64,${p.bytesBase64Encoded}`;
+      if (p.videoUri) {
+        const vRes = await fetch(`${p.videoUri}&key=${apiKey}`);
+        if (!vRes.ok) throw new Error(`Failed to fetch video URI: ${vRes.status}`);
+        const buf = await vRes.arrayBuffer();
+        return `data:video/mp4;base64,${Buffer.from(buf).toString("base64")}`;
+      }
+    }
+
+    throw new Error(`Veo done but no video found. Response keys: ${Object.keys(response || {}).join(", ")}`);
   }
 }
 
