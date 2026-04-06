@@ -106,35 +106,3 @@ export function isCameraSupported(): boolean {
   return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
 
-export async function generateVideoTryOn(
-  personPhotoBase64: string,
-  clothingName: string,
-  clothingImageBase64: string,
-  motionType: string,
-  clothingCategory?: string
-): Promise<{
-  referenceImage: string | null;
-  video: string | null;
-  veoError: string | null;
-}> {
-  const response = await fetch("/api/generate-video", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      personPhotoBase64,
-      clothingName,
-      clothingImageBase64,
-      motionType,
-      clothingCategory,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    const err = new Error(error.error || "Failed to generate video") as Error & { status: number };
-    err.status = response.status;
-    throw err;
-  }
-
-  return response.json();
-}
