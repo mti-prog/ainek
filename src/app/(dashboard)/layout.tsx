@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation"
 import { headers } from "next/headers"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
-import { supabaseAdmin } from "@/lib/supabase/admin"
 import Link from "next/link"
+import { getOwnedTenantForUser } from "@/lib/tenant"
 
 export default async function DashboardLayout({
   children,
@@ -18,12 +18,11 @@ export default async function DashboardLayout({
     redirect("/login")
   }
 
-  // Load tenant info for this store owner
-  const { data: tenant } = await supabaseAdmin
-    .from("tenants")
-    .select("id, name, slug, logo_url, plan, status, try_on_used, try_on_limit")
-    .eq("email", user.email!)
-    .single()
+  const tenant = await getOwnedTenantForUser(user)
+
+  if (!tenant) {
+    redirect("/login")
+  }
 
   const headersList = await headers()
   const tenantSlug = headersList.get("x-tenant-slug") ?? tenant?.slug ?? ""
@@ -36,6 +35,9 @@ export default async function DashboardLayout({
           <p className="text-xs text-white/40 uppercase tracking-widest mb-1">Магазин</p>
           <p className="font-semibold text-white">{tenant?.name ?? "—"}</p>
           <p className="text-xs text-violet-400">{tenantSlug}.ainek.kg</p>
+          {tenant.onboarding_status && tenant.onboarding_status !== "ready" && (
+            <p className="text-[11px] text-yellow-300 mt-1">Настройка: {tenant.onboarding_status}</p>
+          )}
         </div>
 
         <nav className="flex flex-col gap-1 flex-1">

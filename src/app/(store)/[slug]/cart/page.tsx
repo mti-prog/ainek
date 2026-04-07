@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 import Link from "next/link"
+import Image from "next/image"
 
 interface CartItem {
   productId: string
@@ -108,11 +109,16 @@ function CartContent({ slug }: { slug: string }) {
               className="flex gap-4 p-4 rounded-xl bg-white/5 border border-white/10"
             >
               {item.imageUrl ? (
-                <img
-                  src={item.imageUrl}
-                  alt={item.name}
-                  className="w-16 h-20 rounded-lg object-cover flex-shrink-0"
-                />
+                <div className="relative w-16 h-20 rounded-lg overflow-hidden flex-shrink-0">
+                  <Image
+                    src={item.imageUrl}
+                    alt={item.name}
+                    fill
+                    sizes="64px"
+                    className="object-cover"
+                    unoptimized
+                  />
+                </div>
               ) : (
                 <div className="w-16 h-20 rounded-lg bg-white/10 flex-shrink-0" />
               )}

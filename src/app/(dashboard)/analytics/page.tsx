@@ -1,21 +1,27 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { redirect } from "next/navigation"
+import { getOwnedTenantForUser, getTenantSchemaName, isTenantOnboardingReady } from "@/lib/tenant"
 
 export default async function AnalyticsPage() {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const { data: tenant } = await supabaseAdmin
-    .from("tenants")
-    .select("id")
-    .eq("email", user.email!)
-    .single()
+  const tenant = await getOwnedTenantForUser(user)
 
   if (!tenant) redirect("/login")
 
-  const schemaName = `store_${tenant.id.replace(/-/g, "_")}`
+  if (!isTenantOnboardingReady(tenant)) {
+    return (
+      <div className="p-8 max-w-4xl">
+        <h1 className="text-2xl font-bold text-white mb-4">Аналитика</h1>
+        <p className="text-white/40">Аналитика появится после завершения настройки магазина.</p>
+      </div>
+    )
+  }
+
+  const schemaName = getTenantSchemaName(tenant.id)
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString()
 
   // Try-on sessions last 30 days

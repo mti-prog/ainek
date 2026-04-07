@@ -24,14 +24,6 @@ export default function MirrorView() {
   const [resultVisible, setResultVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    initCamera(facingMode);
-    return () => {
-      stopCamera(streamRef.current);
-      if (countdownRef.current) clearTimeout(countdownRef.current);
-    };
-  }, []);
-
   const initCamera = async (mode: "user" | "environment") => {
     if (!videoRef.current) return;
     stopCamera(streamRef.current);
@@ -52,10 +44,16 @@ export default function MirrorView() {
     }
   };
 
+  useEffect(() => {
+    initCamera(facingMode);
+    return () => {
+      stopCamera(streamRef.current);
+      if (countdownRef.current) clearTimeout(countdownRef.current);
+    };
+  }, [facingMode]);
+
   const handleFlipCamera = () => {
-    const newMode = facingMode === "user" ? "environment" : "user";
-    setFacingMode(newMode);
-    initCamera(newMode);
+    setFacingMode((current) => (current === "user" ? "environment" : "user"));
   };
 
   const startCountdownAndShoot = useCallback((products: UserProduct[], mode: "tryon" | "style") => {

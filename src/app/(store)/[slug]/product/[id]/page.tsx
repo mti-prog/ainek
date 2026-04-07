@@ -2,6 +2,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { notFound } from "next/navigation"
 import TryOnModal from "@/components/try-on/TryOnModal"
 import AddToCartButton from "@/components/store/AddToCartButton"
+import Image from "next/image"
+import { getTenantSchemaName } from "@/lib/tenant"
 
 interface Props {
   params: Promise<{ slug: string; id: string }>
@@ -12,13 +14,17 @@ export default async function ProductDetailPage({ params }: Props) {
 
   const { data: tenant } = await supabaseAdmin
     .from("tenants")
-    .select("id, name")
+    .select("id, name, onboarding_status")
     .eq("slug", slug)
     .single()
 
   if (!tenant) notFound()
 
-  const schemaName = `store_${tenant.id.replace(/-/g, "_")}`
+  if (tenant.onboarding_status && tenant.onboarding_status !== "ready") {
+    notFound()
+  }
+
+  const schemaName = getTenantSchemaName(tenant.id)
 
   const { data: product } = await supabaseAdmin
     .schema(schemaName)
@@ -49,12 +55,15 @@ export default async function ProductDetailPage({ params }: Props) {
       <div className="grid md:grid-cols-2 gap-10">
         {/* Image gallery */}
         <div className="space-y-3">
-          <div className="aspect-[3/4] rounded-2xl overflow-hidden bg-white/5">
+          <div className="aspect-[3/4] rounded-2xl overflow-hidden bg-white/5 relative">
             {primaryImage ? (
-              <img
+              <Image
                 src={primaryImage.url}
                 alt={product.name}
-                className="w-full h-full object-cover"
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-cover"
+                unoptimized
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-white/20">
@@ -67,9 +76,16 @@ export default async function ProductDetailPage({ params }: Props) {
               {images.map((img, i) => (
                 <div
                   key={i}
-                  className="flex-shrink-0 w-16 h-20 rounded-lg overflow-hidden bg-white/5"
+                  className="relative flex-shrink-0 w-16 h-20 rounded-lg overflow-hidden bg-white/5"
                 >
-                  <img src={img.url} alt="" className="w-full h-full object-cover" />
+                  <Image
+                    src={img.url}
+                    alt=""
+                    fill
+                    sizes="64px"
+                    className="object-cover"
+                    unoptimized
+                  />
                 </div>
               ))}
             </div>
@@ -133,6 +149,8 @@ export default async function ProductDetailPage({ params }: Props) {
                   id: product.id,
                   name: product.name,
                   imageUrl: primaryImage?.url,
+                  tenantId: tenant.id,
+                  tenantSlug: slug,
                 }}
               />
             )}

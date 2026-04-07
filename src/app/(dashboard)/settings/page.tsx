@@ -2,17 +2,14 @@ import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { redirect } from "next/navigation"
 import BillingSection from "@/components/dashboard/BillingSection"
+import { getOwnedTenantForUser } from "@/lib/tenant"
 
 export default async function SettingsPage() {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const { data: tenant } = await supabaseAdmin
-    .from("tenants")
-    .select("id, name, slug, email, phone, address, plan, status, try_on_used, try_on_limit, trial_ends_at")
-    .eq("email", user.email!)
-    .single()
+  const tenant = await getOwnedTenantForUser(user)
 
   if (!tenant) redirect("/login")
 

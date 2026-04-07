@@ -17,13 +17,17 @@ export const tenants = pgTable("tenants", {
   name: varchar("name", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 100 }).unique().notNull(),
   email: varchar("email", { length: 255 }).unique().notNull(),
+  ownerUserId: uuid("owner_user_id"),
   phone: varchar("phone", { length: 20 }),
   address: text("address"),
   city: varchar("city", { length: 100 }).default("Bishkek"),
   country: varchar("country", { length: 10 }).default("KG"),
   logoUrl: text("logo_url"),
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
   status: varchar("status", { length: 20 }).default("trial"),   // trial | active | suspended
   plan: varchar("plan", { length: 20 }).default("starter"),     // starter | business | premium
+  onboardingStatus: varchar("onboarding_status", { length: 32 }).default("creating_profile"),
+  onboardingError: text("onboarding_error"),
   tryOnLimit: integer("try_on_limit").default(50),              // included try-ons/month (50 for trial)
   tryOnUsed: integer("try_on_used").default(0),                 // used this month
   overageCount: integer("overage_count").default(0),            // try-ons over limit this period

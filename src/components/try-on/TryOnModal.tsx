@@ -1,12 +1,15 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
+import Image from "next/image"
 import { X, Camera, RotateCcw, Download } from "lucide-react"
 
 interface Product {
   id: string
   name: string
   imageUrl?: string
+  tenantId?: string
+  tenantSlug?: string
 }
 
 interface Props {
@@ -116,6 +119,8 @@ export default function TryOnModal({ product }: Props) {
           clothingName: product.name,
           clothingImageUrl,
           productId: product.id,
+          tenantId: product.tenantId,
+          tenantSlug: product.tenantSlug,
         }),
       })
 
@@ -185,7 +190,14 @@ export default function TryOnModal({ product }: Props) {
               <canvas ref={canvasRef} className="hidden" />
 
               {step === "result" && resultImage && (
-                <img src={resultImage} alt="Try-on result" className="w-full h-full object-cover" />
+                <Image
+                  src={resultImage}
+                  alt="Try-on result"
+                  fill
+                  sizes="384px"
+                  className="object-cover"
+                  unoptimized
+                />
               )}
 
               {step === "generating" && (

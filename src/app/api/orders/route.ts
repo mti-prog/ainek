@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { z } from "zod"
+import { apiError, apiOk } from "@/lib/api"
+import { logEvent } from "@/lib/logging"
+import { getTenantBySlug, getTenantSchemaName, isTenantProvisioned } from "@/lib/tenant"
 
 const orderSchema = z.object({
   tenantId: z.string().uuid(),
@@ -26,20 +29,43 @@ const orderSchema = z.object({
 export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!user) return apiError("Unauthorized", 401, "UNAUTHORIZED")
 
   const body = await request.json()
   const parsed = orderSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
+    return apiError(parsed.error.issues[0].message, 400, "INVALID_ORDER_PAYLOAD")
   }
 
   const { tenantId, items, deliveryMethod, deliveryAddress, paymentMethod, notes } = parsed.data
+  const { ready, missingSchema } = await isTenantProvisioned(tenantId)
+
+  if (!ready) {
+    return apiError(
+      missingSchema ? "Store is still being provisioned" : "Store is unavailable",
+      409,
+      "TENANT_SCHEMA_UNAVAILABLE"
+    )
+  }
+
+  const { data: tenant } = await supabaseAdmin
+    .from("tenants")
+    .select("id, name, status, onboarding_status")
+    .eq("id", tenantId)
+    .single()
+
+  if (!tenant) {
+    return apiError("Tenant not found", 404, "TENANT_NOT_FOUND")
+  }
+
+  if (tenant.onboarding_status && tenant.onboarding_status !== "ready") {
+    return apiError("Store setup is incomplete", 409, "TENANT_ONBOARDING_INCOMPLETE")
+  }
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.qty, 0)
   const total = subtotal // no discount for MVP
 
-  const schemaName = `store_${tenantId.replace(/-/g, "_")}`
+  const schemaName = getTenantSchemaName(tenantId)
 
   // Create order in store schema
   const { data: order, error } = await supabaseAdmin
@@ -61,15 +87,15 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (error || !order) {
-    return NextResponse.json({ error: "Failed to create order" }, { status: 500 })
+    logEvent({
+      event: "orders.create_failed",
+      level: "error",
+      tenantId,
+      userId: user.id,
+      message: error?.message ?? "Order insert failed",
+    })
+    return apiError("Failed to create order", 500, "ORDER_CREATE_FAILED")
   }
-
-  // Get tenant name for denormalized order_history
-  const { data: tenant } = await supabaseAdmin
-    .from("tenants")
-    .select("name")
-    .eq("id", tenantId)
-    .single()
 
   // Write to order_history (buyer-facing view)
   await supabaseAdmin.from("order_history").insert({
@@ -90,5 +116,13 @@ export async function POST(request: NextRequest) {
     .eq("user_id", user.id)
     .eq("tenant_id", tenantId)
 
-  return NextResponse.json({ orderId: order.id }, { status: 201 })
+  logEvent({
+    event: "orders.created",
+    tenantId,
+    userId: user.id,
+    orderId: order.id,
+    total,
+  })
+
+  return apiOk({ orderId: order.id }, 201)
 }

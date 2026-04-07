@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import { Upload, X } from "lucide-react"
 
 const CATEGORIES = ["tops", "bottoms", "dresses", "shoes", "accessories"]
@@ -86,7 +87,14 @@ export default function UploadProductPage() {
           <label className="block text-sm text-white/60 mb-2">Фото товара</label>
           {imagePreview ? (
             <div className="relative w-32 h-40 rounded-xl overflow-hidden border border-white/20">
-              <img src={imagePreview} alt="" className="w-full h-full object-cover" />
+              <Image
+                src={imagePreview}
+                alt=""
+                fill
+                sizes="128px"
+                className="object-cover"
+                unoptimized
+              />
               <button
                 type="button"
                 onClick={() => { setImagePreview(null); setImageFile(null) }}

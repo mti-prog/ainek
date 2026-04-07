@@ -1,6 +1,8 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { redirect } from "next/navigation"
+import { getOwnedTenantForUser, getTenantSchemaName, isTenantOnboardingReady } from "@/lib/tenant"
+import OrderStatusButton from "@/components/dashboard/OrderStatusButton"
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Новый",
@@ -31,15 +33,20 @@ export default async function DashboardOrdersPage({ searchParams }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const { data: tenant } = await supabaseAdmin
-    .from("tenants")
-    .select("id")
-    .eq("email", user.email!)
-    .single()
+  const tenant = await getOwnedTenantForUser(user)
 
   if (!tenant) redirect("/login")
 
-  const schemaName = `store_${tenant.id.replace(/-/g, "_")}`
+  if (!isTenantOnboardingReady(tenant)) {
+    return (
+      <div className="p-8 max-w-5xl">
+        <h1 className="text-2xl font-bold text-white mb-6">Заказы</h1>
+        <p className="text-white/30 text-center py-16">Заказы будут доступны после завершения настройки магазина.</p>
+      </div>
+    )
+  }
+
+  const schemaName = getTenantSchemaName(tenant.id)
 
   let query = supabaseAdmin
     .schema(schemaName)
@@ -107,15 +114,15 @@ export default async function DashboardOrdersPage({ searchParams }: Props) {
                 {/* Status actions */}
                 {order.status === "pending" && (
                   <div className="flex gap-2 mt-3">
-                    <UpdateStatusButton orderId={order.id} tenantId={tenant.id} status="confirmed" label="Подтвердить" />
-                    <UpdateStatusButton orderId={order.id} tenantId={tenant.id} status="cancelled" label="Отменить" danger />
+                    <OrderStatusButton orderId={order.id} status="confirmed" label="Подтвердить" />
+                    <OrderStatusButton orderId={order.id} status="cancelled" label="Отменить" danger />
                   </div>
                 )}
                 {order.status === "confirmed" && (
-                  <UpdateStatusButton orderId={order.id} tenantId={tenant.id} status="shipped" label="Отправить" />
+                  <OrderStatusButton orderId={order.id} status="shipped" label="Отправить" />
                 )}
                 {order.status === "shipped" && (
-                  <UpdateStatusButton orderId={order.id} tenantId={tenant.id} status="delivered" label="Доставлен" />
+                  <OrderStatusButton orderId={order.id} status="delivered" label="Доставлен" />
                 )}
               </div>
             )
@@ -123,24 +130,5 @@ export default async function DashboardOrdersPage({ searchParams }: Props) {
         </div>
       )}
     </div>
-  )
-}
-
-function UpdateStatusButton({ orderId, tenantId, status, label, danger }: {
-  orderId: string; tenantId: string; status: string; label: string; danger?: boolean
-}) {
-  return (
-    <form action={`/api/tenant/orders/${orderId}`} method="PATCH">
-      <input type="hidden" name="status" value={status} />
-      <input type="hidden" name="tenantId" value={tenantId} />
-      <button
-        type="submit"
-        className={`px-3 py-1.5 rounded-lg text-xs transition ${
-          danger ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" : "bg-white/10 text-white/70 hover:bg-white/15"
-        }`}
-      >
-        {label}
-      </button>
-    </form>
   )
 }

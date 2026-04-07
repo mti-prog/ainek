@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { notFound } from "next/navigation"
 import ProductCard from "@/components/store/ProductCard"
+import { getTenantSchemaName } from "@/lib/tenant"
 
 const CATEGORIES = [
   { key: "all", label: "Все" },
@@ -25,13 +26,27 @@ export default async function StoreCatalogPage({ params, searchParams }: Props) 
 
   const { data: tenant } = await supabaseAdmin
     .from("tenants")
-    .select("id, name")
+    .select("id, name, onboarding_status")
     .eq("slug", slug)
     .single()
 
   if (!tenant) notFound()
 
-  const schemaName = `store_${tenant.id.replace(/-/g, "_")}`
+  const schemaName = getTenantSchemaName(tenant.id)
+
+  if (tenant.onboarding_status && tenant.onboarding_status !== "ready") {
+    return (
+      <div className="max-w-4xl mx-auto px-6 py-16">
+        <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-8 text-center">
+          <p className="text-yellow-300 text-sm uppercase tracking-[0.24em] mb-3">Ainek Pilot</p>
+          <h1 className="text-2xl font-bold text-white mb-3">{tenant.name} готовится к запуску</h1>
+          <p className="text-white/60 text-sm">
+            Магазин завершает техническую настройку каталога и примерки. Витрина скоро появится здесь.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   let query = supabaseAdmin
     .schema(schemaName)

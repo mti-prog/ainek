@@ -1,21 +1,26 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { redirect } from "next/navigation"
+import Link from "next/link"
+import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist"
+import {
+  getOwnedTenantForUser,
+  getTenantSchemaName,
+  isTenantOnboardingReady,
+  isTenantProvisioned,
+} from "@/lib/tenant"
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const { data: tenant } = await supabaseAdmin
-    .from("tenants")
-    .select("id, name, slug, plan, status, try_on_used, try_on_limit, trial_ends_at")
-    .eq("email", user.email!)
-    .single()
+  const tenant = await getOwnedTenantForUser(user)
 
   if (!tenant) redirect("/login")
 
-  const schemaName = `store_${tenant.id.replace(/-/g, "_")}`
+  const schemaName = getTenantSchemaName(tenant.id)
+  const schemaStatus = await isTenantProvisioned(tenant.id)
 
   // Recent try-on sessions for this store
   const { data: sessions, count: sessionCount } = await supabaseAdmin
@@ -33,16 +38,59 @@ export default async function DashboardPage() {
     .order("created_at", { ascending: false })
     .limit(5)
 
+  const { count: productCount } = await supabaseAdmin
+    .schema(schemaName)
+    .from("products")
+    .select("*", { count: "exact", head: true })
+
   const trialDaysLeft = tenant.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(tenant.trial_ends_at).getTime() - Date.now()) / 86400000))
     : null
 
-  const usagePercent = Math.min(100, Math.round((tenant.try_on_used / tenant.try_on_limit) * 100))
+  const usagePercent = tenant.try_on_limit
+    ? Math.min(100, Math.round((tenant.try_on_used / tenant.try_on_limit) * 100))
+    : 0
+
+  const checklistItems = [
+    {
+      label: "Магазин создан",
+      done: Boolean(tenant.id),
+      hint: "Основная запись тенанта существует.",
+    },
+    {
+      label: "Схема магазина готова",
+      done: schemaStatus.ready && isTenantOnboardingReady(tenant),
+      hint: "Каталог, заказы и аналитика доступны без ручного SQL.",
+    },
+    {
+      label: "Каталог заполнен",
+      done: (productCount ?? 0) > 0,
+      hint: "Добавьте хотя бы один товар через форму или CSV.",
+    },
+    {
+      label: "Примерка доступна",
+      done: schemaStatus.ready && tenant.status !== "suspended",
+      hint: "API примерки не блокируется незавершенной настройкой или подпиской.",
+    },
+    {
+      label: "Биллинг и trial видимы",
+      done: tenant.status === "trial" || tenant.status === "active",
+      hint: "Команда магазина видит тариф, лимиты и срок триала.",
+    },
+  ]
 
   return (
     <div className="p-8 max-w-5xl">
       <h1 className="text-2xl font-bold text-white mb-2">Обзор</h1>
       <p className="text-white/40 text-sm mb-8">{tenant.name}</p>
+
+      <div className="mb-8">
+        <OnboardingChecklist
+          items={checklistItems}
+          onboardingStatus={tenant.onboarding_status ?? "ready"}
+          onboardingError={tenant.onboarding_error}
+        />
+      </div>
 
       {/* Trial banner */}
       {tenant.status === "trial" && trialDaysLeft !== null && (
@@ -51,12 +99,12 @@ export default async function DashboardPage() {
             <p className="text-white font-medium">Пробный период</p>
             <p className="text-white/60 text-sm">Осталось {trialDaysLeft} дней · 50 примерок включено</p>
           </div>
-          <a
+          <Link
             href="/dashboard/settings"
             className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm hover:bg-violet-500 transition"
           >
             Подключить тариф
-          </a>
+          </Link>
         </div>
       )}
 

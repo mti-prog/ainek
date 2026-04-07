@@ -2,27 +2,27 @@ import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { redirect } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
+import { getOwnedTenantForUser, getTenantSchemaName, isTenantOnboardingReady } from "@/lib/tenant"
 
 export default async function WardrobePage() {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const { data: tenant } = await supabaseAdmin
-    .from("tenants")
-    .select("id")
-    .eq("email", user.email!)
-    .single()
+  const tenant = await getOwnedTenantForUser(user)
 
   if (!tenant) redirect("/login")
 
-  const schemaName = `store_${tenant.id.replace(/-/g, "_")}`
+  const schemaName = getTenantSchemaName(tenant.id)
 
-  const { data: products } = await supabaseAdmin
-    .schema(schemaName)
-    .from("products")
-    .select("id, name, price, currency, category, images, is_active, try_on_count")
-    .order("created_at", { ascending: false })
+  const { data: products } = isTenantOnboardingReady(tenant)
+    ? await supabaseAdmin
+        .schema(schemaName)
+        .from("products")
+        .select("id, name, price, currency, category, images, is_active, try_on_count")
+        .order("created_at", { ascending: false })
+    : { data: [] }
 
   return (
     <div className="p-8 max-w-5xl">
@@ -47,7 +47,18 @@ export default async function WardrobePage() {
         </div>
       </div>
 
-      {!products?.length ? (
+      {!isTenantOnboardingReady(tenant) ? (
+        <div className="text-center py-24 text-white/30">
+          <p className="text-lg mb-2">Настройка магазина ещё не завершена</p>
+          <p className="text-sm mb-6">После повторной настройки здесь появится каталог для загрузки товаров.</p>
+          <Link
+            href="/dashboard"
+            className="px-6 py-3 rounded-xl bg-white/10 text-white hover:bg-white/15 transition inline-block"
+          >
+            Открыть обзор
+          </Link>
+        </div>
+      ) : !products?.length ? (
         <div className="text-center py-24 text-white/30">
           <p className="text-lg mb-2">Каталог пустой</p>
           <p className="text-sm mb-6">Добавьте первый товар, чтобы покупатели могли примерять</p>
@@ -65,9 +76,16 @@ export default async function WardrobePage() {
             const thumb = images?.find((i) => i.isPrimary) ?? images?.[0]
             return (
               <div key={p.id} className="rounded-xl overflow-hidden bg-white/5 border border-white/10">
-                <div className="aspect-[3/4] bg-white/5">
+                <div className="aspect-[3/4] bg-white/5 relative">
                   {thumb ? (
-                    <img src={thumb.url} alt={p.name} className="w-full h-full object-cover" />
+                    <Image
+                      src={thumb.url}
+                      alt={p.name}
+                      fill
+                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                      className="object-cover"
+                      unoptimized
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-white/20 text-xs">
                       Нет фото

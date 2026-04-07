@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
-import { z } from "zod"
+import { apiError, apiOk } from "@/lib/api"
+import { createProductSchema, normalizeProductPayload } from "@/lib/catalog"
+import {
+  getOwnedTenantForUser,
+  getTenantSchemaName,
+  isTenantOnboardingReady,
+  isTenantProvisioned,
+} from "@/lib/tenant"
+import { logEvent } from "@/lib/logging"
 
 // ── GET /api/tenant/products ─────────────────────────────────────────────────
 // Returns paginated products for a store.
@@ -17,10 +25,13 @@ export async function GET(request: NextRequest) {
   const offset = (page - 1) * limit
 
   if (!tenantId) {
-    return NextResponse.json({ error: "tenantId required" }, { status: 400 })
+    return apiError("tenantId required", 400, "TENANT_ID_REQUIRED")
   }
 
-  const schemaName = `store_${tenantId.replace(/-/g, "_")}`
+  const { ready, schemaName, missingSchema } = await isTenantProvisioned(tenantId)
+  if (!ready && missingSchema) {
+    return apiError("Store is still being provisioned", 409, "TENANT_NOT_PROVISIONED")
+  }
 
   let query = supabaseAdmin
     .schema(schemaName)
@@ -37,11 +48,16 @@ export async function GET(request: NextRequest) {
   const { data, error, count } = await query
 
   if (error) {
-    console.error("Products query error:", error)
-    return NextResponse.json({ error: "Failed to load products" }, { status: 500 })
+    logEvent({
+      event: "tenant.products.list_failed",
+      level: "error",
+      tenantId,
+      message: error.message,
+    })
+    return apiError("Failed to load products", 500, "PRODUCT_LIST_FAILED")
   }
 
-  return NextResponse.json({
+  return apiOk({
     products: data ?? [],
     total: count ?? 0,
     page,
@@ -52,77 +68,89 @@ export async function GET(request: NextRequest) {
 // ── POST /api/tenant/products ────────────────────────────────────────────────
 // Creates a new product. Requires store owner auth.
 
-const createSchema = z.object({
-  name: z.string().min(1).max(255),
-  description: z.string().optional(),
-  category: z.string().optional(),
-  subcategory: z.string().optional(),
-  brand: z.string().optional(),
-  price: z.number().positive(),
-  currency: z.string().default("KGS"),
-  sku: z.string().optional(),
-  images: z.array(z.object({ url: z.string(), isPrimary: z.boolean().optional(), color: z.string().optional() })).default([]),
-  sizes: z.array(z.object({ size: z.string(), stockQty: z.number().default(0) })).default([]),
-  colors: z.array(z.object({ name: z.string(), hex: z.string(), images: z.array(z.string()).default([]) })).default([]),
-  isVirtualTryOnEnabled: z.boolean().default(true),
-})
-
 export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return apiError("Unauthorized", 401, "UNAUTHORIZED")
   }
 
-  // Get tenant for this store owner
-  const { data: tenant } = await supabaseAdmin
-    .from("tenants")
-    .select("id")
-    .eq("email", user.email!)
-    .single()
+  const tenant = await getOwnedTenantForUser(user)
 
   if (!tenant) {
-    return NextResponse.json({ error: "Tenant not found" }, { status: 403 })
+    return apiError("Tenant not found", 403, "TENANT_NOT_FOUND")
   }
 
-  const body = await request.json()
-  const parsed = createSchema.safeParse(body)
-
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0].message },
-      { status: 400 }
+  if (!isTenantOnboardingReady(tenant)) {
+    return apiError(
+      "Store setup is incomplete. Retry provisioning before adding products.",
+      409,
+      "TENANT_ONBOARDING_INCOMPLETE",
+      { onboardingStatus: tenant.onboarding_status ?? "unknown" }
     )
   }
 
-  const schemaName = `store_${tenant.id.replace(/-/g, "_")}`
+  const body = await request.json()
+  const parsed = createProductSchema.safeParse(body)
+
+  if (!parsed.success) {
+    return apiError(parsed.error.issues[0].message, 400, "INVALID_PRODUCT_PAYLOAD")
+  }
+
+  const { ready, missingSchema } = await isTenantProvisioned(tenant.id)
+  if (!ready) {
+    return apiError(
+      missingSchema
+        ? "Store schema is not ready yet. Retry provisioning first."
+        : "Store schema is unavailable right now.",
+      409,
+      "TENANT_SCHEMA_UNAVAILABLE"
+    )
+  }
+
+  const schemaName = getTenantSchemaName(tenant.id)
+  const product = normalizeProductPayload(parsed.data)
 
   const { data, error } = await supabaseAdmin
     .schema(schemaName)
     .from("products")
     .insert({
       tenant_id: tenant.id,
-      name: parsed.data.name,
-      description: parsed.data.description,
-      category: parsed.data.category,
-      subcategory: parsed.data.subcategory,
-      brand: parsed.data.brand,
-      price: parsed.data.price,
-      currency: parsed.data.currency,
-      sku: parsed.data.sku,
-      images: parsed.data.images,
-      sizes: parsed.data.sizes,
-      colors: parsed.data.colors,
-      is_virtual_try_on_enabled: parsed.data.isVirtualTryOnEnabled,
+      name: product.name,
+      description: product.description,
+      category: product.category,
+      subcategory: product.subcategory,
+      brand: product.brand,
+      price: product.price,
+      currency: product.currency,
+      sku: product.sku,
+      images: product.images,
+      sizes: product.sizes,
+      colors: product.colors,
+      is_active: product.isActive,
+      is_virtual_try_on_enabled: product.isVirtualTryOnEnabled,
     })
     .select("id")
     .single()
 
   if (error) {
-    console.error("Product insert error:", error)
-    return NextResponse.json({ error: "Failed to create product" }, { status: 500 })
+    logEvent({
+      event: "tenant.products.create_failed",
+      level: "error",
+      tenantId: tenant.id,
+      ownerUserId: user.id,
+      message: error.message,
+    })
+    return apiError("Failed to create product", 500, "PRODUCT_CREATE_FAILED")
   }
 
-  return NextResponse.json({ productId: data.id }, { status: 201 })
+  logEvent({
+    event: "tenant.products.created",
+    tenantId: tenant.id,
+    ownerUserId: user.id,
+    productId: data.id,
+  })
+
+  return apiOk({ productId: data.id }, 201)
 }

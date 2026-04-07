@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { z } from "zod"
+import { apiError, apiOk } from "@/lib/api"
+import { logEvent } from "@/lib/logging"
+import { getTenantSchemaName, isTenantProvisioned } from "@/lib/tenant"
 
 interface CartItem {
   productId: string
@@ -12,14 +16,38 @@ interface CartItem {
   imageUrl?: string
 }
 
+const cartItemSchema = z.object({
+  productId: z.string().min(1),
+  name: z.string().min(1),
+  price: z.union([z.number(), z.string()]),
+  qty: z.number().int().positive(),
+  size: z.string().optional(),
+  color: z.string().optional(),
+  imageUrl: z.string().optional(),
+})
+
+const addToCartSchema = z.object({
+  tenantId: z.string().uuid(),
+  item: cartItemSchema,
+})
+
+const removeFromCartSchema = z.object({
+  tenantId: z.string().uuid(),
+  productId: z.string().min(1),
+  size: z.string().optional(),
+})
+
 // ── GET /api/cart ─────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!user) return apiError("Unauthorized", 401, "UNAUTHORIZED")
 
   const tenantId = request.nextUrl.searchParams.get("tenantId")
-  if (!tenantId) return NextResponse.json({ error: "tenantId required" }, { status: 400 })
+  if (!tenantId) return apiError("tenantId required", 400, "TENANT_ID_REQUIRED")
+
+  const { ready } = await isTenantProvisioned(tenantId)
+  if (!ready) return apiOk({ items: [] })
 
   const { data } = await supabaseAdmin
     .from("carts")
@@ -28,16 +56,42 @@ export async function GET(request: NextRequest) {
     .eq("tenant_id", tenantId)
     .single()
 
-  return NextResponse.json({ items: data?.items ?? [] })
+  return apiOk({ items: data?.items ?? [] })
 }
 
 // ── POST /api/cart ────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!user) return apiError("Unauthorized", 401, "UNAUTHORIZED")
 
-  const { tenantId, item } = await request.json() as { tenantId: string; item: CartItem }
+  const parsed = addToCartSchema.safeParse(await request.json())
+  if (!parsed.success) {
+    return apiError(parsed.error.issues[0].message, 400, "INVALID_CART_PAYLOAD")
+  }
+
+  const { tenantId, item } = parsed.data
+  const { ready, missingSchema } = await isTenantProvisioned(tenantId)
+  if (!ready) {
+    return apiError(
+      missingSchema ? "Store is still being provisioned" : "Store is unavailable",
+      409,
+      "TENANT_SCHEMA_UNAVAILABLE"
+    )
+  }
+
+  const schemaName = getTenantSchemaName(tenantId)
+  const { data: product } = await supabaseAdmin
+    .schema(schemaName)
+    .from("products")
+    .select("id, is_active")
+    .eq("id", item.productId)
+    .eq("is_active", true)
+    .single()
+
+  if (!product) {
+    return apiError("Product not available", 404, "PRODUCT_NOT_AVAILABLE")
+  }
 
   // Fetch existing cart
   const { data: existing } = await supabaseAdmin
@@ -67,16 +121,29 @@ export async function POST(request: NextRequest) {
       .insert({ user_id: user.id, tenant_id: tenantId, items })
   }
 
-  return NextResponse.json({ ok: true })
+  logEvent({
+    event: "cart.updated",
+    tenantId,
+    userId: user.id,
+    action: "add",
+    productId: item.productId,
+  })
+
+  return apiOk({ ok: true })
 }
 
 // ── DELETE /api/cart ──────────────────────────────────────────────────────────
 export async function DELETE(request: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!user) return apiError("Unauthorized", 401, "UNAUTHORIZED")
 
-  const { tenantId, productId, size } = await request.json()
+  const parsed = removeFromCartSchema.safeParse(await request.json())
+  if (!parsed.success) {
+    return apiError(parsed.error.issues[0].message, 400, "INVALID_CART_REMOVE_PAYLOAD")
+  }
+
+  const { tenantId, productId, size } = parsed.data
 
   const { data: existing } = await supabaseAdmin
     .from("carts")
@@ -85,7 +152,7 @@ export async function DELETE(request: NextRequest) {
     .eq("tenant_id", tenantId)
     .single()
 
-  if (!existing) return NextResponse.json({ ok: true })
+  if (!existing) return apiOk({ ok: true })
 
   const items: CartItem[] = (existing.items as CartItem[]).filter(
     (i) => !(i.productId === productId && i.size === size)
@@ -96,5 +163,13 @@ export async function DELETE(request: NextRequest) {
     .update({ items })
     .eq("id", existing.id)
 
-  return NextResponse.json({ ok: true })
+  logEvent({
+    event: "cart.updated",
+    tenantId,
+    userId: user.id,
+    action: "remove",
+    productId,
+  })
+
+  return apiOk({ ok: true })
 }

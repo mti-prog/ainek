@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import Link from "next/link"
+import Image from "next/image"
 
 interface Props {
   children: React.ReactNode
@@ -26,7 +27,16 @@ export default async function StoreLayout({ children, params }: Props) {
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <Link href={`/store/${slug}`} className="flex items-center gap-3">
           {tenant.logo_url ? (
-            <img src={tenant.logo_url} alt={tenant.name} className="h-8 w-8 rounded-lg object-cover" />
+            <div className="relative h-8 w-8 overflow-hidden rounded-lg">
+              <Image
+                src={tenant.logo_url}
+                alt={tenant.name}
+                fill
+                sizes="32px"
+                className="object-cover"
+                unoptimized
+              />
+            </div>
           ) : (
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center text-xs font-bold">
               {tenant.name.charAt(0).toUpperCase()}

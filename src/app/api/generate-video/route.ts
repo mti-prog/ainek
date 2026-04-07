@@ -177,8 +177,6 @@ async function generateVeoVideo(
   const outfitDescription = clothingName || "the outfit";
   const prompt = `Fashion virtual try-on video. The person is wearing ${outfitDescription}. ${motionDescription} The outfit fits naturally with realistic fabric physics and gravity. The person's face and identity remain 100% consistent throughout. CRITICAL QUALITY RULE: The visual quality, sharpness, texture, color accuracy, and material detail of ALL worn items must be IDENTICAL to the user's original reference photo at every single frame of the video: CLOTHING: fabric texture, stitching, pattern, color, material finish must be razor-sharp. FOOTWEAR: sole detail, material texture, color, shape must exactly match the reference. HEADWEAR: fabric, logo, shape, texture, color must be fully preserved with no blur. EYEWEAR: frame detail, lens clarity, transparency, reflections must stay crystal clear. Do NOT blur, soften, darken, oversaturate, or degrade ANY worn item under any motion or lighting condition. Match the exact brightness, contrast, sharpness, and color tone of the user's reference photo throughout the entire video. Photorealistic, fashion editorial quality. Lighting is consistent with the reference frame.`;
 
-  // Use SDK generateVideos (plural) — correct method name in @google/genai v1.x
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let operation = await (ai.models as any).generateVideos({
     model: "veo-2.0-generate-001",
     prompt,
@@ -198,17 +196,14 @@ async function generateVeoVideo(
   const pollInterval = 10_000;
   const startTime = Date.now();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   while (!(operation as any).done) {
     if (Date.now() - startTime > maxWait) {
       throw new Error("Video generation timed out after 4 minutes");
     }
     await new Promise((r) => setTimeout(r, pollInterval));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     operation = await (ai.operations as any).getVideosOperation({ operation });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const op = operation as any;
   const generatedVideos = op.response?.generatedVideos as Array<{ video?: { uri?: string; videoBytes?: string } }> | undefined;
 

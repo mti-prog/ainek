@@ -1,22 +1,27 @@
 import { NextRequest, NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase/admin"
+import { apiError, apiOk } from "@/lib/api"
+import { getTenantBySlug } from "@/lib/tenant"
 
 export async function GET(request: NextRequest) {
   const slug = request.nextUrl.searchParams.get("slug")?.toLowerCase().trim()
 
   if (!slug) {
-    return NextResponse.json({ error: "slug required" }, { status: 400 })
+    return apiError("slug required", 400, "SLUG_REQUIRED")
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("tenants")
-    .select("id, name, slug, logo_url, status, plan")
-    .eq("slug", slug)
-    .single()
+  const tenant = await getTenantBySlug(slug)
 
-  if (error || !data) {
-    return NextResponse.json({ error: "Tenant not found" }, { status: 404 })
+  if (!tenant) {
+    return apiError("Tenant not found", 404, "TENANT_NOT_FOUND")
   }
 
-  return NextResponse.json(data)
+  return apiOk({
+    id: tenant.id,
+    name: tenant.name,
+    slug: tenant.slug,
+    logo_url: tenant.logo_url ?? null,
+    status: tenant.status,
+    plan: tenant.plan,
+    onboarding_status: tenant.onboarding_status ?? "ready",
+  })
 }

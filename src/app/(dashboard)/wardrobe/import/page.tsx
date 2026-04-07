@@ -3,6 +3,7 @@
 import { useState, useRef } from "react"
 
 interface ParsedProduct {
+  rowNumber: number
   name: string
   description: string
   price: string
@@ -39,6 +40,7 @@ export default function ImportPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<ParsedProduct[]>([])
   const [errors, setErrors] = useState<string[]>([])
+  const [importErrors, setImportErrors] = useState<string[]>([])
   const [importing, setImporting] = useState(false)
   const [imported, setImported] = useState(0)
   const [parseError, setParseError] = useState("")
@@ -49,6 +51,7 @@ export default function ImportPage() {
 
     setParseError("")
     setErrors([])
+    setImportErrors([])
     setPreview([])
     setImported(0)
 
@@ -82,6 +85,7 @@ export default function ImportPage() {
         if (!price || isNaN(Number(price))) { errs.push(`Строка ${i + 1}: некорректная цена "${price}"`); continue }
 
         products.push({
+          rowNumber: i + 1,
           name,
           description: cols[idx.description] ?? "",
           price,
@@ -102,7 +106,9 @@ export default function ImportPage() {
   async function handleImport() {
     if (preview.length === 0) return
     setImporting(true)
+    setImportErrors([])
     let count = 0
+    const failedRows: string[] = []
 
     for (const p of preview) {
       const sizes = p.sizes
@@ -131,13 +137,20 @@ export default function ImportPage() {
         body: JSON.stringify(body),
       })
 
-      if (res.ok) count++
+      if (res.ok) {
+        count++
+        continue
+      }
+
+      const data = await res.json().catch(() => null)
+      failedRows.push(`Строка ${p.rowNumber}: ${data?.error ?? "ошибка импорта"}`)
     }
 
     setImported(count)
-    setPreview([])
+    setImportErrors(failedRows)
+    setPreview(failedRows.length > 0 ? preview : [])
     setImporting(false)
-    if (fileRef.current) fileRef.current.value = ""
+    if (failedRows.length === 0 && fileRef.current) fileRef.current.value = ""
   }
 
   return (
@@ -203,6 +216,22 @@ export default function ImportPage() {
           <p className="text-green-400 font-medium">
             Успешно импортировано: {imported} товара(ов)
           </p>
+        </div>
+      )}
+
+      {importErrors.length > 0 && (
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 mb-6">
+          <p className="text-red-400 text-sm font-medium mb-2">
+            Не удалось импортировать: {importErrors.length}
+          </p>
+          <ul className="space-y-1">
+            {importErrors.slice(0, 8).map((e, i) => (
+              <li key={i} className="text-red-300/80 text-xs">{e}</li>
+            ))}
+            {importErrors.length > 8 && (
+              <li className="text-red-300/60 text-xs">…и ещё {importErrors.length - 8}</li>
+            )}
+          </ul>
         </div>
       )}
 

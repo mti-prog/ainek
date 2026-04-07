@@ -3,25 +3,23 @@ import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { stripe } from "@/lib/stripe/client"
 import { PLANS, type PlanKey } from "@/lib/stripe/plans"
+import { apiError, apiOk } from "@/lib/api"
+import { getOwnedTenantForUser } from "@/lib/tenant"
 
 export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!user) return apiError("Unauthorized", 401, "UNAUTHORIZED")
 
   const { plan } = await request.json() as { plan: PlanKey }
 
   if (!PLANS[plan]) {
-    return NextResponse.json({ error: "Invalid plan" }, { status: 400 })
+    return apiError("Invalid plan", 400, "INVALID_PLAN")
   }
 
-  const { data: tenant } = await supabaseAdmin
-    .from("tenants")
-    .select("id, name, stripe_customer_id")
-    .eq("email", user.email!)
-    .single()
+  const tenant = await getOwnedTenantForUser(user)
 
-  if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 })
+  if (!tenant) return apiError("Tenant not found", 404, "TENANT_NOT_FOUND")
 
   const planData = PLANS[plan]
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -51,5 +49,5 @@ export async function POST(request: NextRequest) {
     metadata: { tenant_id: tenant.id, plan },
   })
 
-  return NextResponse.json({ url: session.url })
+  return apiOk({ url: session.url })
 }

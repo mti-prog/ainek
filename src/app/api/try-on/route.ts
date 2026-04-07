@@ -3,6 +3,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { generateTryOn } from "@/lib/gemini/try-on"
 import { getCachedTryOn, setCachedTryOn, hashPhoto } from "@/lib/redis/cache"
+import { apiError, apiOk } from "@/lib/api"
+import { getTenantBySlug, isTenantProvisioned } from "@/lib/tenant"
+import { logEvent } from "@/lib/logging"
 
 const USER_DAILY_LIMIT = 5
 const AI_COST_USD = 0.0670
@@ -13,7 +16,7 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return apiError("Unauthorized", 401, "UNAUTHORIZED")
   }
 
   const userId = user.id
@@ -26,14 +29,22 @@ export async function POST(request: NextRequest) {
     clothingImageUrl,
     productId,         // UUID from store catalog (for cache key)
     tenantId,          // passed from client or from middleware header
+    tenantSlug,
   } = body
 
   if (!imageBase64) {
-    return NextResponse.json({ error: "No image provided" }, { status: 400 })
+    return apiError("No image provided", 400, "IMAGE_REQUIRED")
   }
 
-  const effectiveTenantId =
-    tenantId ?? request.headers.get("x-tenant-id") ?? null
+  let effectiveTenantId = tenantId ?? null
+
+  if (!effectiveTenantId) {
+    const resolvedSlug = tenantSlug ?? request.headers.get("x-tenant-slug")
+    if (resolvedSlug) {
+      const tenant = await getTenantBySlug(resolvedSlug)
+      effectiveTenantId = tenant?.id ?? null
+    }
+  }
 
   // ── 3. User daily quota ───────────────────────────────────────────────────
   const { data: userData, error: userError } = await supabaseAdmin
@@ -43,7 +54,7 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (userError || !userData) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 })
+    return apiError("User not found", 404, "USER_PROFILE_NOT_FOUND")
   }
 
   const today = new Date().toISOString().split("T")[0]
@@ -59,35 +70,54 @@ export async function POST(request: NextRequest) {
   }
 
   if (dailyCount >= USER_DAILY_LIMIT) {
-    return NextResponse.json(
-      { error: "Daily limit reached", limit: USER_DAILY_LIMIT, resetAt: today },
-      { status: 429 }
+    return apiError(
+      "Daily limit reached",
+      429,
+      "USER_DAILY_LIMIT_REACHED",
+      { limit: USER_DAILY_LIMIT, resetAt: today }
     )
   }
 
   // ── 4. Tenant monthly quota ───────────────────────────────────────────────
   if (effectiveTenantId) {
+    const { ready, missingSchema } = await isTenantProvisioned(effectiveTenantId)
+    if (!ready && missingSchema) {
+      return apiError(
+        "Store setup is incomplete. Please try again later.",
+        409,
+        "TENANT_NOT_PROVISIONED"
+      )
+    }
+
     const { data: tenantData } = await supabaseAdmin
       .from("tenants")
-      .select("try_on_used, try_on_limit, status")
+      .select("try_on_used, try_on_limit, overage_count, status, onboarding_status")
       .eq("id", effectiveTenantId)
       .single()
 
     if (tenantData) {
-      if (tenantData.status === "suspended") {
-        return NextResponse.json(
-          { error: "Store subscription is suspended" },
-          { status: 402 }
+      if (tenantData.onboarding_status && tenantData.onboarding_status !== "ready") {
+        return apiError(
+          "Store setup is incomplete. Please try again later.",
+          409,
+          "TENANT_ONBOARDING_INCOMPLETE"
         )
       }
+      if (tenantData.status === "suspended") {
+        return apiError("Store subscription is suspended", 402, "TENANT_SUSPENDED")
+      }
       if ((tenantData.try_on_used ?? 0) >= (tenantData.try_on_limit ?? 50)) {
-        // Record overage — don't hard-block (allows billing to catch up)
+        const nextOverageCount = (tenantData.overage_count ?? 0) + 1
         await supabaseAdmin
           .from("tenants")
-          .update({ overage_count: (tenantData as { overage_count?: number }).overage_count ?? 0 + 1 })
+          .update({ overage_count: nextOverageCount })
           .eq("id", effectiveTenantId)
-          // For strict block, uncomment:
-          // return NextResponse.json({ error: "Store monthly limit reached" }, { status: 429 })
+
+        logEvent({
+          event: "try_on.tenant_overage_recorded",
+          tenantId: effectiveTenantId,
+          overageCount: nextOverageCount,
+        })
       }
     }
   }
@@ -110,7 +140,14 @@ export async function POST(request: NextRequest) {
       status: "done",
     })
 
-    return NextResponse.json({ generatedImage: cached, cached: true })
+    logEvent({
+      event: "try_on.cache_hit",
+      tenantId: effectiveTenantId,
+      userId,
+      productId: productId ?? null,
+    })
+
+    return apiOk({ generatedImage: cached, cached: true })
   }
 
   // ── 6. Generate via Gemini ────────────────────────────────────────────────
@@ -122,12 +159,16 @@ export async function POST(request: NextRequest) {
       clothingImageBase64: clothingImageUrl,
     })
   } catch (err) {
-    console.error("Gemini try-on error:", err)
     const msg = err instanceof Error ? err.message : String(err)
-    return NextResponse.json(
-      { error: "Failed to generate try-on", details: msg },
-      { status: 500 }
-    )
+    logEvent({
+      event: "try_on.generation_failed",
+      level: "error",
+      tenantId: effectiveTenantId,
+      userId,
+      productId: productId ?? null,
+      message: msg,
+    })
+    return apiError("Failed to generate try-on", 500, "TRY_ON_GENERATION_FAILED", { message: msg })
   }
 
   // ── 7. Log try_on_sessions ────────────────────────────────────────────────
@@ -161,7 +202,15 @@ export async function POST(request: NextRequest) {
   // ── 9. Cache result ───────────────────────────────────────────────────────
   await setCachedTryOn(cacheKey, photoHash, result.imageBase64)
 
-  return NextResponse.json({
+  logEvent({
+    event: "try_on.generated",
+    tenantId: effectiveTenantId,
+    userId,
+    productId: productId ?? null,
+    sessionId: session?.id ?? null,
+  })
+
+  return apiOk({
     generatedImage: result.imageBase64,
     cached: false,
     sessionId: session?.id ?? null,

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./admin"
+import { logEvent } from "@/lib/logging"
 
 /**
  * Creates a dedicated PostgreSQL schema for a new store tenant.
@@ -8,6 +9,7 @@ import { supabaseAdmin } from "./admin"
  */
 export async function provisionTenantSchema(tenantId: string): Promise<void> {
   const schemaName = `store_${tenantId.replace(/-/g, "_")}`
+  logEvent({ event: "tenant.provisioning.started", tenantId, schemaName })
 
   const sql = `
     -- Create isolated schema for this store
@@ -82,8 +84,17 @@ export async function provisionTenantSchema(tenantId: string): Promise<void> {
 
   const { error } = await supabaseAdmin.rpc("exec_sql", { sql })
   if (error) {
+    logEvent({
+      event: "tenant.provisioning.failed",
+      level: "error",
+      tenantId,
+      schemaName,
+      message: error.message,
+    })
     throw new Error(`Failed to provision tenant schema: ${error.message}`)
   }
+
+  logEvent({ event: "tenant.provisioning.completed", tenantId, schemaName })
 }
 
 /**
