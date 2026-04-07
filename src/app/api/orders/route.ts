@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Write to order_history (buyer-facing view)
-  await supabaseAdmin.from("order_history").insert({
+  const { error: historyError } = await supabaseAdmin.from("order_history").insert({
     user_id: user.id,
     tenant_id: tenantId,
     order_id: order.id,
@@ -108,6 +108,18 @@ export async function POST(request: NextRequest) {
     status: "pending",
     items_count: items.reduce((s, i) => s + i.qty, 0),
   })
+
+  if (historyError) {
+    // Order exists in store schema but buyer can't see it — log and alert, don't fail the request
+    logEvent({
+      event: "orders.history_sync_failed",
+      level: "error",
+      tenantId,
+      userId: user.id,
+      orderId: order.id,
+      message: historyError.message,
+    })
+  }
 
   // Clear cart
   await supabaseAdmin

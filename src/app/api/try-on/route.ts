@@ -118,14 +118,22 @@ export async function POST(request: NextRequest) {
           tenantId: effectiveTenantId,
           overageCount: nextOverageCount,
         })
+
+        return apiError(
+          "Monthly try-on limit reached. Please upgrade your plan.",
+          402,
+          "TENANT_QUOTA_EXCEEDED",
+          { used: tenantData.try_on_used, limit: tenantData.try_on_limit }
+        )
       }
     }
   }
 
   // ── 5. Redis cache lookup ─────────────────────────────────────────────────
   const photoHash = hashPhoto(imageBase64)
-  const cacheKey = productId ?? clothingName ?? "unknown"
-  const cached = await getCachedTryOn(cacheKey, photoHash)
+  // Only cache when we have a stable product ID — never use free-text or "unknown" as key
+  const cacheKey = productId ?? null
+  const cached = cacheKey ? await getCachedTryOn(cacheKey, photoHash) : null
 
   if (cached) {
     // Log session as cache hit (no cost, no quota increment)
@@ -199,8 +207,10 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // ── 9. Cache result ───────────────────────────────────────────────────────
-  await setCachedTryOn(cacheKey, photoHash, result.imageBase64)
+  // ── 9. Cache result (only when we have a stable product ID) ──────────────
+  if (cacheKey) {
+    await setCachedTryOn(cacheKey, photoHash, result.imageBase64)
+  }
 
   logEvent({
     event: "try_on.generated",
