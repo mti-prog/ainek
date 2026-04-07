@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "src/app/api/try-on/route.ts": { "maxDuration": 60 },
+    "src/app/api/generate-video/route.ts": { "maxDuration": 300 }
+  }
+}
