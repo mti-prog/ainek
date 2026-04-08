@@ -16,7 +16,8 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const next = searchParams.get("next") ?? "/dashboard"
+  // `next` only used if explicitly passed (e.g. from a store page)
+  const next = searchParams.get("next") ?? ""
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -29,23 +30,44 @@ function LoginForm() {
     setError("")
 
     const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (error) {
-      setError(error.message)
+    if (signInError) {
+      setError(
+        signInError.message === "Invalid login credentials"
+          ? "Неверный email или пароль"
+          : signInError.message
+      )
       setLoading(false)
       return
     }
 
-    router.push(next)
+    // If a specific next URL was given, use it
+    if (next) {
+      router.push(next)
+      router.refresh()
+      return
+    }
+
+    // Otherwise detect role: owner → dashboard, buyer → stores
+    try {
+      const res = await fetch("/api/me/role")
+      const { role } = await res.json()
+      router.push(role === "owner" ? "/dashboard" : "/stores")
+    } catch {
+      router.push("/stores")
+    }
     router.refresh()
   }
 
   return (
     <div className="w-full max-w-md p-8 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
       <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold text-white mb-2">Ainek</h1>
-        <p className="text-white/60">Войдите в аккаунт</p>
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center text-white font-bold mx-auto mb-3">
+          A
+        </div>
+        <h1 className="text-2xl font-bold text-white">Войти в Ainek</h1>
+        <p className="text-white/50 text-sm mt-1">Магазины, примерки, заказы</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -56,8 +78,9 @@ function LoginForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:border-violet-500"
-            placeholder="store@example.com"
+            autoComplete="email"
+            className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:border-violet-500 transition"
+            placeholder="you@example.com"
           />
         </div>
 
@@ -68,21 +91,29 @@ function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:border-violet-500"
+            autoComplete="current-password"
+            className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:border-violet-500 transition"
             placeholder="••••••••"
           />
         </div>
 
         {error && (
-          <p className="text-red-400 text-sm">{error}</p>
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+            {error}
+          </div>
         )}
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white font-semibold hover:opacity-90 transition disabled:opacity-50"
+          className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white font-semibold hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
         >
-          {loading ? "Входим..." : "Войти"}
+          {loading ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Входим...
+            </>
+          ) : "Войти"}
         </button>
       </form>
 

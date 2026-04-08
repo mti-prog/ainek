@@ -12,6 +12,9 @@ export default function Home() {
           <span className="font-bold text-lg">Ainek</span>
         </div>
         <div className="flex items-center gap-4">
+          <Link href="/stores" className="text-sm text-white/60 hover:text-white transition">
+            Магазины
+          </Link>
           <Link href="/login" className="text-sm text-white/60 hover:text-white transition">
             Войти
           </Link>
