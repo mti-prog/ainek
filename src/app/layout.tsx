@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body suppressHydrationWarning style={{ margin: 0, padding: 0, background: "#06060f", overflow: "hidden" }}>
+      <body suppressHydrationWarning style={{ margin: 0, padding: 0, background: "#06060f" }}>
         {children}
       </body>
     </html>

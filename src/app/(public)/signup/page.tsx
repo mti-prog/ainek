@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
 
 export default function SignupPage() {
@@ -55,7 +56,21 @@ export default function SignupPage() {
       return
     }
 
+    // Sign in immediately so the browser has a session
+    const supabase = createClient()
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: form.email,
+      password: form.password,
+    })
+
+    if (signInError) {
+      setError("Магазин создан! Войдите в аккаунт.")
+      router.push("/login")
+      return
+    }
+
     router.push("/dashboard")
+    router.refresh()
   }
 
   return (
