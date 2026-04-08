@@ -1,10 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
-import { Suspense } from "react"
 
 function RegisterForm() {
   const router = useRouter()
@@ -16,6 +15,7 @@ function RegisterForm() {
   const [name, setName] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [needsConfirm, setNeedsConfirm] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -23,29 +23,62 @@ function RegisterForm() {
     setError("")
 
     const supabase = createClient()
-    const { error: signUpError } = await supabase.auth.signUp({
+
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: name },
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     })
 
     if (signUpError) {
-      setError(signUpError.message)
+      setError(
+        signUpError.message === "User already registered"
+          ? "Этот email уже зарегистрирован. Войдите в аккаунт."
+          : signUpError.message
+      )
       setLoading(false)
       return
     }
 
-    // Sign in immediately after signup
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-    if (signInError) {
-      router.push(`/login?next=${encodeURIComponent(next)}`)
+    // If session is set immediately — email confirmation is disabled in Supabase
+    if (data.session) {
+      router.push(next)
+      router.refresh()
       return
     }
 
-    router.push(next)
-    router.refresh()
+    // Email confirmation is required
+    setNeedsConfirm(true)
+    setLoading(false)
+  }
+
+  if (needsConfirm) {
+    return (
+      <div className="w-full max-w-md p-8 rounded-2xl bg-white/5 border border-white/10 text-center">
+        <div className="w-16 h-16 rounded-full bg-violet-500/20 flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-bold text-white mb-2">Проверьте почту</h2>
+        <p className="text-white/60 text-sm mb-2">
+          Мы отправили письмо на <span className="text-violet-400">{email}</span>
+        </p>
+        <p className="text-white/40 text-xs mb-6">
+          Нажмите на ссылку в письме чтобы подтвердить аккаунт и войти.
+        </p>
+        <button
+          onClick={() => setNeedsConfirm(false)}
+          className="text-violet-400 text-sm hover:underline"
+        >
+          Изменить email
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -111,9 +144,9 @@ function RegisterForm() {
       </p>
 
       <div className="mt-4 pt-4 border-t border-white/10 text-center">
-        <p className="text-white/30 text-xs mb-2">Владелец магазина?</p>
+        <p className="text-white/30 text-xs mb-1">Владелец магазина?</p>
         <Link href="/signup" className="text-violet-400 text-xs hover:underline">
-          Подключить магазин к Ainek →
+          Подключить магазин →
         </Link>
       </div>
     </div>

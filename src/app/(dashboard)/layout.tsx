@@ -3,6 +3,7 @@ import { headers } from "next/headers"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import Link from "next/link"
 import { getOwnedTenantForUser } from "@/lib/tenant"
+import SignOutButton from "@/components/SignOutButton"
 
 export default async function DashboardLayout({
   children,
@@ -68,6 +69,10 @@ export default async function DashboardLayout({
             <p className="text-xs text-white/30 mt-1 capitalize">{tenant.plan}</p>
           </div>
         )}
+
+        <div className="pt-3 border-t border-white/10">
+          <SignOutButton className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/40 hover:text-white/70 hover:bg-white/5 transition" />
+        </div>
       </aside>
 
       {/* Main content */}

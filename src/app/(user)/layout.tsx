@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import Link from "next/link"
+import SignOutButton from "@/components/SignOutButton"
 
 export default async function UserLayout({
   children,
@@ -32,6 +33,7 @@ export default async function UserLayout({
           <Link href="/account/profile" className="hover:text-white transition">
             Профиль
           </Link>
+          <SignOutButton />
         </nav>
       </header>
       <main className="max-w-3xl mx-auto px-6 py-10">{children}</main>

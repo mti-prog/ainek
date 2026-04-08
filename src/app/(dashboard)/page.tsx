@@ -20,28 +20,32 @@ export default async function DashboardPage() {
   if (!tenant) redirect("/login")
 
   const schemaName = getTenantSchemaName(tenant.id)
-  const schemaStatus = await isTenantProvisioned(tenant.id)
 
-  // Recent try-on sessions for this store
-  const { data: sessions, count: sessionCount } = await supabaseAdmin
-    .from("try_on_sessions")
-    .select("*", { count: "exact" })
-    .eq("tenant_id", tenant.id)
-    .order("created_at", { ascending: false })
-    .limit(5)
+  // Parallel data fetching — much faster than sequential awaits
+  const [schemaStatus, sessionsResult, ordersResult, productsResult] = await Promise.all([
+    isTenantProvisioned(tenant.id),
+    supabaseAdmin
+      .from("try_on_sessions")
+      .select("*", { count: "exact" })
+      .eq("tenant_id", tenant.id)
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabaseAdmin
+      .schema(schemaName)
+      .from("orders")
+      .select("id, status, total, currency, created_at, items")
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabaseAdmin
+      .schema(schemaName)
+      .from("products")
+      .select("*", { count: "exact", head: true }),
+  ])
 
-  // Recent orders
-  const { data: orders } = await supabaseAdmin
-    .schema(schemaName)
-    .from("orders")
-    .select("id, status, total, currency, created_at, items")
-    .order("created_at", { ascending: false })
-    .limit(5)
-
-  const { count: productCount } = await supabaseAdmin
-    .schema(schemaName)
-    .from("products")
-    .select("*", { count: "exact", head: true })
+  const sessions = sessionsResult.data
+  const sessionCount = sessionsResult.count
+  const orders = ordersResult.data
+  const productCount = productsResult.count
 
   const trialDaysLeft = tenant.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(tenant.trial_ends_at).getTime() - Date.now()) / 86400000))
