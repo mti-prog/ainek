@@ -25,7 +25,7 @@ export default async function StoreLayout({ children, params }: Props) {
     <div className="min-h-screen bg-[#06060f] text-white">
       {/* Store header */}
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <Link href={`/store/${slug}`} className="flex items-center gap-3">
+        <Link href={`/${slug}`} className="flex items-center gap-3">
           {tenant.logo_url ? (
             <div className="relative h-8 w-8 overflow-hidden rounded-lg">
               <Image
@@ -46,13 +46,13 @@ export default async function StoreLayout({ children, params }: Props) {
         </Link>
 
         <nav className="flex items-center gap-6 text-sm text-white/70">
-          <Link href={`/store/${slug}`} className="hover:text-white transition">
+          <Link href={`/${slug}`} className="hover:text-white transition">
             Каталог
           </Link>
-          <Link href={`/store/${slug}/cart`} className="hover:text-white transition">
+          <Link href={`/${slug}/cart`} className="hover:text-white transition">
             Корзина
           </Link>
-          <Link href={`/store/${slug}/orders`} className="hover:text-white transition">
+          <Link href={`/${slug}/orders`} className="hover:text-white transition">
             Заказы
           </Link>
         </nav>

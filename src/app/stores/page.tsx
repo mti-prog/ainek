@@ -86,7 +86,7 @@ export default async function StoresPage({ searchParams }: Props) {
               {stores.map((store) => (
                 <Link
                   key={store.id}
-                  href={`/store/${store.slug}`}
+                  href={`/${store.slug}`}
                   className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-violet-500/50 hover:bg-white/[0.07] transition-all"
                 >
                   <div className="flex items-center gap-3 mb-3">

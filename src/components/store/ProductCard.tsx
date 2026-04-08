@@ -26,7 +26,7 @@ export default function ProductCard({ product, slug }: Props) {
 
   return (
     <Link
-      href={`/store/${slug}/product/${product.id}`}
+      href={`/${slug}/product/${product.id}`}
       className="group rounded-xl overflow-hidden bg-white/5 border border-white/10 hover:border-violet-500/50 transition-all"
     >
       {/* Product image */}

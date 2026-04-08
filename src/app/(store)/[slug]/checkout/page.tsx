@@ -147,7 +147,7 @@ function CheckoutContent({ slug }: { slug: string }) {
         </p>
         <div className="flex flex-col gap-3">
           <button
-            onClick={() => router.push(`/store/${slug}`)}
+            onClick={() => router.push(`/${slug}`)}
             className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white font-semibold hover:opacity-90 transition"
           >
             Продолжить покупки
@@ -190,7 +190,7 @@ function CheckoutContent({ slug }: { slug: string }) {
             <div className="text-center py-12 text-white/40">
               <p className="text-lg mb-4">Корзина пуста</p>
               <button
-                onClick={() => router.push(`/store/${slug}`)}
+                onClick={() => router.push(`/${slug}`)}
                 className="text-violet-400 hover:underline text-sm"
               >
                 Перейти в каталог

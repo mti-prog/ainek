@@ -70,7 +70,7 @@ export default async function StoreCatalogPage({ params, searchParams }: Props) 
         {CATEGORIES.map((cat) => (
           <a
             key={cat.key}
-            href={`/store/${slug}?category=${cat.key}`}
+            href={`/${slug}?category=${cat.key}`}
             className={`px-4 py-2 rounded-full text-sm whitespace-nowrap transition ${
               category === cat.key
                 ? "bg-violet-600 text-white"
@@ -102,7 +102,7 @@ export default async function StoreCatalogPage({ params, searchParams }: Props) 
           {Array.from({ length: totalPages }, (_, i) => (
             <a
               key={i}
-              href={`/store/${slug}?category=${category}&page=${i + 1}`}
+              href={`/${slug}?category=${category}&page=${i + 1}`}
               className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
                 pageNum === i + 1
                   ? "bg-violet-600 text-white"

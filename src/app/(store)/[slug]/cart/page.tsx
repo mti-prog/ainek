@@ -80,7 +80,7 @@ function CartContent({ slug }: { slug: string }) {
     <div className="max-w-2xl mx-auto px-6 py-10">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-white">Корзина</h1>
-        <Link href={`/store/${slug}`} className="text-sm text-violet-400 hover:underline">
+        <Link href={`/${slug}`} className="text-sm text-violet-400 hover:underline">
           Продолжить покупки
         </Link>
       </div>
@@ -95,7 +95,7 @@ function CartContent({ slug }: { slug: string }) {
           </div>
           <p className="text-white/40 mb-6">Корзина пуста</p>
           <Link
-            href={`/store/${slug}`}
+            href={`/${slug}`}
             className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white font-semibold hover:opacity-90 transition inline-block"
           >
             Перейти в каталог
@@ -179,7 +179,7 @@ function CartContent({ slug }: { slug: string }) {
 
           <button
             onClick={() =>
-              router.push(`/store/${slug}/checkout?tenantId=${tenantId}`)
+              router.push(`/${slug}/checkout?tenantId=${tenantId}`)
             }
             className="w-full py-3.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white font-semibold hover:opacity-90 transition"
           >
