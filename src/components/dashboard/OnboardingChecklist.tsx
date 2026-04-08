@@ -78,9 +78,19 @@ export default function OnboardingChecklist({
         ))}
       </div>
 
-      {onboardingStatus === "failed" && (
-        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-          <p className="text-red-300 text-sm font-medium">Автонастройка не завершилась</p>
+      {onboardingStatus !== "ready" && (
+        <div className={`mt-4 rounded-lg border p-4 ${
+          onboardingStatus === "failed"
+            ? "border-red-500/30 bg-red-500/10"
+            : "border-yellow-500/30 bg-yellow-500/10"
+        }`}>
+          <p className={`text-sm font-medium ${onboardingStatus === "failed" ? "text-red-300" : "text-yellow-300"}`}>
+            {onboardingStatus === "failed"
+              ? "Автонастройка не завершилась"
+              : onboardingStatus === "provisioning_store"
+              ? "Настройка схемы магазина не завершена"
+              : "Магазин ещё не настроен — нажмите кнопку ниже"}
+          </p>
           {onboardingError && (
             <p className="text-red-300/80 text-xs mt-1 break-words">{onboardingError}</p>
           )}
@@ -88,9 +98,13 @@ export default function OnboardingChecklist({
             type="button"
             onClick={retryProvisioning}
             disabled={isPending}
-            className="mt-3 px-4 py-2 rounded-lg bg-red-500/20 text-red-200 text-sm hover:bg-red-500/30 transition disabled:opacity-50"
+            className={`mt-3 px-4 py-2 rounded-lg text-sm transition disabled:opacity-50 ${
+              onboardingStatus === "failed"
+                ? "bg-red-500/20 text-red-200 hover:bg-red-500/30"
+                : "bg-yellow-500/20 text-yellow-200 hover:bg-yellow-500/30"
+            }`}
           >
-            {isPending ? "Повторяем..." : "Повторить настройку"}
+            {isPending ? "Настраиваем..." : "Настроить магазин"}
           </button>
         </div>
       )}

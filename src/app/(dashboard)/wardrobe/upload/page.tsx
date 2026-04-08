@@ -5,12 +5,21 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Upload, X } from "lucide-react"
 
-const CATEGORIES = ["tops", "bottoms", "dresses", "shoes", "accessories"]
+const CATEGORIES = [
+  { value: "tops",        label: "Верхняя одежда / Футболки" },
+  { value: "bottoms",     label: "Брюки / Шорты / Юбки" },
+  { value: "dresses",     label: "Платья / Сарафаны" },
+  { value: "shoes",       label: "Обувь" },
+  { value: "suits",       label: "Костюмы / Спортивные костюмы" },
+  { value: "accessories", label: "Аксессуары / Очки / Головные уборы" },
+]
 
 export default function UploadProductPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [provisioningError, setProvisioningError] = useState(false)
+  const [provisioning, setProvisioning] = useState(false)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageFile, setImageFile] = useState<File | null>(null)
 
@@ -72,9 +81,29 @@ export default function UploadProductPage() {
       router.push("/dashboard/wardrobe")
     } else {
       const data = await res.json()
-      setError(data.error ?? "Ошибка сохранения")
+      if (data.code === "TENANT_SCHEMA_UNAVAILABLE" || data.code === "TENANT_ONBOARDING_INCOMPLETE") {
+        setProvisioningError(true)
+        setError("Схема магазина не готова. Нажмите «Настроить магазин» ниже.")
+      } else {
+        setError(data.error ?? data.message ?? "Ошибка сохранения")
+      }
       setLoading(false)
     }
+  }
+
+  async function handleReprovision() {
+    setProvisioning(true)
+    setError("")
+    const res = await fetch("/api/tenant/reprovision", { method: "POST" })
+    const data = await res.json()
+    if (res.ok) {
+      setProvisioningError(false)
+      setError("")
+      router.refresh()
+    } else {
+      setError(data.error ?? "Не удалось настроить магазин. Попробуйте ещё раз.")
+    }
+    setProvisioning(false)
   }
 
   return (
@@ -130,7 +159,7 @@ export default function UploadProductPage() {
             className={inputCls}
           >
             {CATEGORIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c.value} value={c.value}>{c.label}</option>
             ))}
           </select>
         </Field>
@@ -189,6 +218,26 @@ export default function UploadProductPage() {
         </label>
 
         {error && <p className="text-red-400 text-sm">{error}</p>}
+
+        {provisioningError && (
+          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4">
+            <p className="text-yellow-300 text-sm font-medium mb-1">Магазин ещё не настроен</p>
+            <p className="text-yellow-300/70 text-xs mb-3">
+              Схема базы данных для этого магазина не создана. Нажмите кнопку ниже — это займёт несколько секунд.
+            </p>
+            <button
+              type="button"
+              onClick={handleReprovision}
+              disabled={provisioning}
+              className="px-4 py-2 rounded-lg bg-yellow-500/20 text-yellow-200 text-sm hover:bg-yellow-500/30 transition disabled:opacity-50 flex items-center gap-2"
+            >
+              {provisioning && (
+                <div className="w-3.5 h-3.5 border border-yellow-300 border-t-transparent rounded-full animate-spin" />
+              )}
+              {provisioning ? "Настраиваем..." : "Настроить магазин"}
+            </button>
+          </div>
+        )}
 
         <div className="flex gap-3 pt-2">
           <button

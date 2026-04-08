@@ -9,6 +9,7 @@ import {
   isTenantOnboardingReady,
   isTenantProvisioned,
 } from "@/lib/tenant"
+import { provisionTenantSchema } from "@/lib/supabase/provision-tenant"
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient()
@@ -18,6 +19,24 @@ export default async function DashboardPage() {
   const tenant = await getOwnedTenantForUser(user)
 
   if (!tenant) redirect("/login")
+
+  // ── Auto-provision: if store schema is missing, run provisioning silently ──
+  if (!tenant.onboarding_status || tenant.onboarding_status === "provisioning_store") {
+    try {
+      await supabaseAdmin
+        .from("tenants")
+        .update({ onboarding_status: "provisioning_store", onboarding_error: null })
+        .eq("id", tenant.id)
+      await provisionTenantSchema(tenant.id)
+      await supabaseAdmin
+        .from("tenants")
+        .update({ onboarding_status: "ready", onboarding_error: null })
+        .eq("id", tenant.id)
+      tenant.onboarding_status = "ready"
+    } catch {
+      // Non-fatal — checklist will show retry button
+    }
+  }
 
   const schemaName = getTenantSchemaName(tenant.id)
 
