@@ -12,19 +12,7 @@ export async function GET(request: Request) {
     return apiError("Unauthorized", 401, "UNAUTHORIZED")
   }
 
-  const { data } = await supabaseAdmin
-    .from("users")
-    .select("daily_try_on_count, daily_try_on_reset")
-    .eq("id", user.id)
-    .single()
-
-  if (!data) {
-    return apiOk({ userRemaining: 0, resetAt: null, tenant: null })
-  }
-
   const today = new Date().toISOString().split("T")[0]
-  const count =
-    (data.daily_try_on_reset as string) < today ? 0 : (data.daily_try_on_count ?? 0)
 
   const url = new URL(request.url)
   const tenantId = url.searchParams.get("tenantId")
@@ -54,10 +42,11 @@ export async function GET(request: Request) {
   }
 
   return apiOk({
-    userRemaining: Math.max(0, 5 - count),
+    userRemaining: null,
     resetAt: today,
-    used: count,
-    limit: 5,
+    used: null,
+    limit: null,
+    unlimited: true,
     tenant,
   })
 }

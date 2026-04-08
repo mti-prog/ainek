@@ -28,6 +28,7 @@ const CATEGORIES = [
   { key: "bottoms",     label: "Низ" },
   { key: "dresses",     label: "Платья" },
   { key: "shoes",       label: "Обувь" },
+  { key: "suits",       label: "Костюмы" },
   { key: "accessories", label: "Акс." },
 ]
 

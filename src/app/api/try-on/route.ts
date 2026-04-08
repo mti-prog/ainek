@@ -7,7 +7,6 @@ import { apiError, apiOk } from "@/lib/api"
 import { getTenantBySlug, isTenantProvisioned } from "@/lib/tenant"
 import { logEvent } from "@/lib/logging"
 
-const USER_DAILY_LIMIT = 5
 const AI_COST_USD = 0.0670
 
 export async function POST(request: NextRequest) {
@@ -51,39 +50,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── 3. User daily quota ───────────────────────────────────────────────────
-  const { data: userData, error: userError } = await supabaseAdmin
-    .from("users")
-    .select("daily_try_on_count, daily_try_on_reset")
-    .eq("id", userId)
-    .single()
-
-  if (userError || !userData) {
-    return apiError("User not found", 404, "USER_PROFILE_NOT_FOUND")
-  }
-
-  const today = new Date().toISOString().split("T")[0]
-
-  let dailyCount = userData.daily_try_on_count ?? 0
-  if ((userData.daily_try_on_reset as string) < today) {
-    // Reset counter for new day
-    await supabaseAdmin
-      .from("users")
-      .update({ daily_try_on_count: 0, daily_try_on_reset: today })
-      .eq("id", userId)
-    dailyCount = 0
-  }
-
-  if (dailyCount >= USER_DAILY_LIMIT) {
-    return apiError(
-      "Daily limit reached",
-      429,
-      "USER_DAILY_LIMIT_REACHED",
-      { limit: USER_DAILY_LIMIT, resetAt: today }
-    )
-  }
-
-  // ── 4. Tenant monthly quota ───────────────────────────────────────────────
+  // ── 3. Tenant monthly quota ───────────────────────────────────────────────
   if (effectiveTenantId) {
     const { ready, missingSchema } = await isTenantProvisioned(effectiveTenantId)
     if (!ready && missingSchema) {
@@ -134,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── 5. Redis cache lookup ─────────────────────────────────────────────────
+  // ── 4. Redis cache lookup ─────────────────────────────────────────────────
   const photoHash = hashPhoto(imageBase64)
   // Cache key: for outfit mode = sorted product IDs joined; for single = productId
   const cacheKey = isOutfitMode
@@ -165,7 +132,7 @@ export async function POST(request: NextRequest) {
     return apiOk({ generatedImage: cached, cached: true })
   }
 
-  // ── 6. Generate via Gemini ────────────────────────────────────────────────
+  // ── 5. Generate via Gemini ────────────────────────────────────────────────
   let result: { imageBase64: string; textResponse: string | null }
   try {
     if (isOutfitMode) {
@@ -208,7 +175,7 @@ export async function POST(request: NextRequest) {
     return apiError("Failed to generate try-on", 500, "TRY_ON_GENERATION_FAILED", { message: msg })
   }
 
-  // ── 7. Log try_on_sessions ────────────────────────────────────────────────
+  // ── 6. Log try_on_sessions ────────────────────────────────────────────────
   const { data: session } = await supabaseAdmin
     .from("try_on_sessions")
     .insert({
@@ -224,19 +191,14 @@ export async function POST(request: NextRequest) {
     .select("id")
     .single()
 
-  // ── 8. Increment counters ─────────────────────────────────────────────────
-  await supabaseAdmin
-    .from("users")
-    .update({ daily_try_on_count: dailyCount + 1 })
-    .eq("id", userId)
-
+  // ── 7. Increment tenant usage ─────────────────────────────────────────────
   if (effectiveTenantId) {
     await supabaseAdmin.rpc("increment_tenant_try_on_used", {
       p_tenant_id: effectiveTenantId,
     })
   }
 
-  // ── 9. Cache result (only when we have a stable product ID) ──────────────
+  // ── 8. Cache result (only when we have a stable product ID) ──────────────
   if (cacheKey) {
     await setCachedTryOn(cacheKey, photoHash, result.imageBase64)
   }
