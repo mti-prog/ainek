@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
-import { generateTryOn } from "@/lib/gemini/try-on"
+import { generateTryOn, generateOutfitTryOn } from "@/lib/gemini/try-on"
 import { getCachedTryOn, setCachedTryOn, hashPhoto } from "@/lib/redis/cache"
 import { apiError, apiOk } from "@/lib/api"
 import { getTenantBySlug, isTenantProvisioned } from "@/lib/tenant"
@@ -30,11 +30,16 @@ export async function POST(request: NextRequest) {
     productId,         // UUID from store catalog (for cache key)
     tenantId,          // passed from client or from middleware header
     tenantSlug,
+    // ── Multi-item outfit mode ──────────────────────────────────────────────
+    clothingItems,     // Array<{ productId, name, imageUrl? }> — outfit studio mode
   } = body
 
   if (!imageBase64) {
     return apiError("No image provided", 400, "IMAGE_REQUIRED")
   }
+
+  // Determine mode: outfit (multi-item) vs single item
+  const isOutfitMode = Array.isArray(clothingItems) && clothingItems.length > 0
 
   let effectiveTenantId = tenantId ?? null
 
@@ -131,8 +136,10 @@ export async function POST(request: NextRequest) {
 
   // ── 5. Redis cache lookup ─────────────────────────────────────────────────
   const photoHash = hashPhoto(imageBase64)
-  // Only cache when we have a stable product ID — never use free-text or "unknown" as key
-  const cacheKey = productId ?? null
+  // Cache key: for outfit mode = sorted product IDs joined; for single = productId
+  const cacheKey = isOutfitMode
+    ? clothingItems.map((i: { productId?: string }) => i.productId).filter(Boolean).sort().join("+") || null
+    : productId ?? null
   const cached = cacheKey ? await getCachedTryOn(cacheKey, photoHash) : null
 
   if (cached) {
@@ -161,11 +168,33 @@ export async function POST(request: NextRequest) {
   // ── 6. Generate via Gemini ────────────────────────────────────────────────
   let result: { imageBase64: string; textResponse: string | null }
   try {
-    result = await generateTryOn({
-      userPhotoBase64: imageBase64,
-      clothingName: clothingName ?? "clothing item",
-      clothingImageBase64: clothingImageUrl,
-    })
+    if (isOutfitMode) {
+      // Multi-item outfit: fetch product images server-side and convert to base64
+      const outfitItems = await Promise.all(
+        clothingItems.map(async (item: { name: string; imageUrl?: string; productId?: string }) => {
+          let imageBase64: string | undefined
+          if (item.imageUrl && item.imageUrl.startsWith("http")) {
+            try {
+              const imgRes = await fetch(item.imageUrl)
+              const arrayBuffer = await imgRes.arrayBuffer()
+              const b64 = Buffer.from(arrayBuffer).toString("base64")
+              const mime = imgRes.headers.get("content-type") ?? "image/jpeg"
+              imageBase64 = `data:${mime};base64,${b64}`
+            } catch {
+              // no image — will fall back to text description
+            }
+          }
+          return { name: item.name, imageBase64 }
+        })
+      )
+      result = await generateOutfitTryOn(imageBase64, outfitItems)
+    } else {
+      result = await generateTryOn({
+        userPhotoBase64: imageBase64,
+        clothingName: clothingName ?? "clothing item",
+        clothingImageBase64: clothingImageUrl,
+      })
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     logEvent({
