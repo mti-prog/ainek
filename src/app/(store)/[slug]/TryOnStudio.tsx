@@ -76,6 +76,7 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [cameraReady, setCameraReady] = useState(false)
   const [isMirrored, setIsMirrored] = useState(true)
+  const [countdown, setCountdown] = useState<number | null>(null)
 
   // ── Try-on ────────────────────────────────────────────────────────────────
   const [selectedItems, setSelectedItems] = useState<StudioProduct[]>(preloadedItems ?? [])
@@ -93,6 +94,7 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const genTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const countdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevItemKeysRef = useRef<string>("")
 
   // ── Toast helper ──────────────────────────────────────────────────────────
@@ -106,6 +108,7 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
     if (step !== "camera") return
     setCameraReady(false)
     setCameraError(null)
+    setCountdown(null)
 
     async function startCamera() {
       try {
@@ -129,12 +132,13 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
     startCamera()
 
     return () => {
+      if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current)
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
     }
   }, [step])
 
-  function capturePhoto() {
+  function finishCapture() {
     if (!videoRef.current || !canvasRef.current) return
     const video = videoRef.current
     const canvas = canvasRef.current
@@ -146,11 +150,42 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
       ctx.scale(-1, 1)
     }
     ctx.drawImage(video, 0, 0)
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
     const dataUrl = canvas.toDataURL("image/jpeg", 0.85)
     setUserPhoto(dataUrl)
     streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    setCountdown(null)
     setStep("studio")
   }
+
+  function capturePhoto() {
+    if (!cameraReady || cameraError) return
+    if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current)
+
+    setCountdown(5)
+
+    const tick = (secondsLeft: number) => {
+      if (secondsLeft <= 0) {
+        finishCapture()
+        return
+      }
+
+      countdownTimeoutRef.current = setTimeout(() => {
+        const nextValue = secondsLeft - 1
+        setCountdown(nextValue > 0 ? nextValue : null)
+        tick(nextValue)
+      }, 1000)
+    }
+
+    tick(5)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current)
+    }
+  }, [])
 
   // ── Auto-generate when selected items change ───────────────────────────────
   const generateOutfit = useCallback(async (photo: string, items: StudioProduct[]) => {
@@ -334,6 +369,13 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
               </svg>
             </div>
           )}
+
+          {countdown !== null && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 pointer-events-none">
+              <span className="text-7xl font-bold text-white drop-shadow-2xl">{countdown}</span>
+              <p className="mt-3 text-sm text-white/85">Подготовьте позу, фото будет сделано автоматически</p>
+            </div>
+          )}
         </div>
 
         <canvas ref={canvasRef} className="hidden" />
@@ -342,12 +384,17 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
         <div className="flex flex-col items-center gap-4">
           <button
             onClick={capturePhoto}
-            disabled={!cameraReady || !!cameraError}
+            disabled={!cameraReady || !!cameraError || countdown !== null}
             className="w-18 h-18 rounded-full border-4 border-white/30 flex items-center justify-center disabled:opacity-40 hover:border-white/60 transition active:scale-95"
             style={{ width: 72, height: 72 }}
+            aria-label={countdown !== null ? `Снимок через ${countdown} сек.` : "Сделать фото"}
           >
             <div className="w-14 h-14 rounded-full bg-white" />
           </button>
+
+          {countdown !== null && (
+            <p className="text-white/65 text-xs">Снимок через {countdown} сек.</p>
+          )}
 
           <button
             onClick={() => setIsMirrored((m) => !m)}
