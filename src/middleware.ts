@@ -13,6 +13,8 @@ const PUBLIC_PATHS = [
 export async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl
   const hostname = request.headers.get("host") ?? ""
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   // ── 1. Resolve tenant slug ────────────────────────────────────────────────
   // Production: slug.ainek.kg → slug
@@ -31,41 +33,42 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set("x-tenant-slug", tenantSlug)
 
   // ── 3. Supabase session (needed for auth-protected route checks) ──────────
-  let response = NextResponse.next({
+  const makeResponse = () => NextResponse.next({
     request: { headers: requestHeaders },
   })
+  let response = makeResponse()
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
+  let userId: string | null = null
+
+  if (supabaseUrl && supabaseAnonKey) {
+    try {
+      const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll()
+          },
+          setAll(cookiesToSet) {
+            response = makeResponse()
+            cookiesToSet.forEach(({ name, value, options }) => {
+              response.cookies.set(name, value, options)
+            })
+          },
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          )
-          response = NextResponse.next({
-            request: { headers: requestHeaders },
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
-        },
-      },
+      })
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      userId = user?.id ?? null
+    } catch {
+      userId = null
     }
-  )
-
-  // Refresh session — required to keep auth tokens alive
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  }
 
   // ── 4. Protect /dashboard routes ─────────────────────────────────────────
   if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
-    if (!user) {
+    if (!userId) {
       const loginUrl = new URL("/login", request.url)
       loginUrl.searchParams.set("next", pathname)
       return NextResponse.redirect(loginUrl)
@@ -74,7 +77,7 @@ export async function middleware(request: NextRequest) {
 
   // ── 5. Protect /account (user profile) routes ────────────────────────────
   if (pathname.startsWith("/account")) {
-    if (!user) {
+    if (!userId) {
       const loginUrl = new URL("/login", request.url)
       loginUrl.searchParams.set("next", pathname)
       return NextResponse.redirect(loginUrl)
@@ -82,8 +85,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Pass tenant-id header if user is authenticated (populated later from DB)
-  if (user) {
-    response.headers.set("x-user-id", user.id)
+  if (userId) {
+    response.headers.set("x-user-id", userId)
   }
 
   return response
