@@ -39,7 +39,7 @@ export default async function StoresPage({ searchParams }: Props) {
     <div className="min-h-screen bg-[#06060f] text-white">
       {/* Header */}
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href="/stores" className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center text-xs font-bold">
             A
           </div>

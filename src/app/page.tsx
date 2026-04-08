@@ -1,6 +1,23 @@
+import { createSupabaseServerClient } from "@/lib/supabase/server"
+import { supabaseAdmin } from "@/lib/supabase/admin"
+import { redirect } from "next/navigation"
 import Link from "next/link"
 
-export default function Home() {
+export default async function Home() {
+  // If already logged in — send to the right place
+  const supabase = await createSupabaseServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (user) {
+    const { data: tenant } = await supabaseAdmin
+      .from("tenants")
+      .select("id")
+      .eq("owner_user_id", user.id)
+      .maybeSingle()
+
+    redirect(tenant ? "/dashboard" : "/stores")
+  }
+
   return (
     <div className="min-h-screen bg-[#06060f] text-white flex flex-col">
       {/* Nav */}
@@ -53,12 +70,12 @@ export default function Home() {
           >
             Начать бесплатно — 14 дней
           </Link>
-          <a
-            href="#how"
+          <Link
+            href="/stores"
             className="px-8 py-4 rounded-xl border border-white/20 font-semibold text-lg hover:border-white/40 transition"
           >
-            Как это работает
-          </a>
+            Посмотреть магазины
+          </Link>
         </div>
 
         <p className="text-white/30 text-sm mt-4">
@@ -67,26 +84,14 @@ export default function Home() {
       </main>
 
       {/* How it works */}
-      <section id="how" className="px-6 py-20 border-t border-white/10">
+      <section className="px-6 py-20 border-t border-white/10">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-12">Как это работает</h2>
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              {
-                step: "1",
-                title: "Регистрируйте магазин",
-                desc: "Создайте аккаунт, загрузите товары через CSV или вручную",
-              },
-              {
-                step: "2",
-                title: "Покупатель фотографируется",
-                desc: "Прямо на странице товара через камеру телефона или ноутбука",
-              },
-              {
-                step: "3",
-                title: "AI показывает результат",
-                desc: "Gemini генерирует реалистичное фото покупателя в вашей одежде за секунды",
-              },
+              { step: "1", title: "Регистрируйте магазин", desc: "Создайте аккаунт, загрузите товары через CSV или вручную" },
+              { step: "2", title: "Покупатель фотографируется", desc: "Прямо на странице товара через камеру телефона или ноутбука" },
+              { step: "3", title: "AI показывает результат", desc: "Gemini генерирует реалистичное фото покупателя в вашей одежде за секунды" },
             ].map((item) => (
               <div key={item.step} className="text-center">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center text-xl font-bold mx-auto mb-4">
@@ -106,47 +111,12 @@ export default function Home() {
           <h2 className="text-3xl font-bold text-center mb-12">Цены</h2>
           <div className="grid md:grid-cols-3 gap-6">
             {[
-              {
-                name: "Trial",
-                price: "Бесплатно",
-                sub: "14 дней",
-                features: ["50 примерок", "1 магазин", "Базовая аналитика"],
-                cta: "Начать",
-                href: "/signup",
-                highlight: false,
-              },
-              {
-                name: "Starter",
-                price: "2 900 сом",
-                sub: "в месяц",
-                features: ["500 примерок", "1 магазин", "Полная аналитика", "Приоритетная поддержка"],
-                cta: "Выбрать",
-                href: "/signup",
-                highlight: true,
-              },
-              {
-                name: "Business",
-                price: "5 900 сом",
-                sub: "в месяц",
-                features: ["2 000 примерок", "3 магазина", "API доступ", "Белый лейбл"],
-                cta: "Выбрать",
-                href: "/signup",
-                highlight: false,
-              },
+              { name: "Trial", price: "Бесплатно", sub: "14 дней", features: ["50 примерок", "1 магазин", "Базовая аналитика"], cta: "Начать", href: "/signup", highlight: false },
+              { name: "Starter", price: "2 900 сом", sub: "в месяц", features: ["500 примерок", "1 магазин", "Полная аналитика", "Поддержка"], cta: "Выбрать", href: "/signup", highlight: true },
+              { name: "Business", price: "5 900 сом", sub: "в месяц", features: ["2 000 примерок", "3 магазина", "API доступ", "Белый лейбл"], cta: "Выбрать", href: "/signup", highlight: false },
             ].map((plan) => (
-              <div
-                key={plan.name}
-                className={`p-6 rounded-2xl border ${
-                  plan.highlight
-                    ? "border-violet-500 bg-violet-500/10"
-                    : "border-white/10 bg-white/5"
-                }`}
-              >
-                {plan.highlight && (
-                  <div className="text-xs text-violet-400 font-semibold mb-3 uppercase tracking-widest">
-                    Популярный
-                  </div>
-                )}
+              <div key={plan.name} className={`p-6 rounded-2xl border ${plan.highlight ? "border-violet-500 bg-violet-500/10" : "border-white/10 bg-white/5"}`}>
+                {plan.highlight && <div className="text-xs text-violet-400 font-semibold mb-3 uppercase tracking-widest">Популярный</div>}
                 <h3 className="font-bold text-xl mb-1">{plan.name}</h3>
                 <div className="mb-1">
                   <span className="text-2xl font-bold">{plan.price}</span>
@@ -159,14 +129,7 @@ export default function Home() {
                     </li>
                   ))}
                 </ul>
-                <Link
-                  href={plan.href}
-                  className={`block text-center py-2.5 rounded-xl font-semibold text-sm transition ${
-                    plan.highlight
-                      ? "bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90"
-                      : "border border-white/20 hover:border-white/40"
-                  }`}
-                >
+                <Link href={plan.href} className={`block text-center py-2.5 rounded-xl font-semibold text-sm transition ${plan.highlight ? "bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90" : "border border-white/20 hover:border-white/40"}`}>
                   {plan.cta}
                 </Link>
               </div>
