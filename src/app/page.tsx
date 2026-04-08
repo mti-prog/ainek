@@ -4,18 +4,29 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 
 export default async function Home() {
-  // If already logged in — send to the right place
-  const supabase = await createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const hasSupabaseEnv = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  )
 
-  if (user) {
-    const { data: tenant } = await supabaseAdmin
-      .from("tenants")
-      .select("id")
-      .eq("owner_user_id", user.id)
-      .maybeSingle()
+  if (hasSupabaseEnv) {
+    try {
+      const supabase = await createSupabaseServerClient()
+      const { data: { user } } = await supabase.auth.getUser()
 
-    redirect(tenant ? "/dashboard" : "/stores")
+      if (user) {
+        const { data: tenant } = await supabaseAdmin
+          .from("tenants")
+          .select("id")
+          .eq("owner_user_id", user.id)
+          .maybeSingle()
+
+        redirect(tenant ? "/dashboard" : "/stores")
+      }
+    } catch {
+      // Allow the marketing page to render even if Supabase env/config
+      // is missing on a deployment.
+    }
   }
 
   return (
