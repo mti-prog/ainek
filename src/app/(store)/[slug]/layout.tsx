@@ -56,15 +56,24 @@ export default async function StoreLayout({ children, params }: Props) {
           </Link>
         </div>
 
-        <nav className="flex items-center gap-6 text-sm text-white/70">
-          <Link href={`/${slug}`} className="hover:text-white transition">
-            Каталог
+        <nav className="flex items-center gap-1 text-white/60">
+          <Link href={`/${slug}`} className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-white/10 hover:text-white transition" title="Каталог">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            <span className="text-[10px]">Каталог</span>
           </Link>
-          <Link href={`/${slug}/cart`} className="hover:text-white transition">
-            Корзина
+          <Link href={`/${slug}/cart`} className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-white/10 hover:text-white transition" title="Корзина">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+            <span className="text-[10px]">Корзина</span>
           </Link>
-          <Link href={`/${slug}/orders`} className="hover:text-white transition">
-            Заказы
+          <Link href={`/${slug}/orders`} className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-white/10 hover:text-white transition" title="Заказы">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6m-6 4h3" />
+            </svg>
+            <span className="text-[10px]">Заказы</span>
           </Link>
         </nav>
       </header>
