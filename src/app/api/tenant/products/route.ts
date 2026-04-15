@@ -98,16 +98,9 @@ export async function POST(request: NextRequest) {
     return apiError(parsed.error.issues[0].message, 400, "INVALID_PRODUCT_PAYLOAD")
   }
 
-  const { ready, missingSchema } = await isTenantProvisioned(tenant.id)
-  if (!ready) {
-    return apiError(
-      missingSchema
-        ? "Store schema is not ready yet. Retry provisioning first."
-        : "Store schema is unavailable right now.",
-      409,
-      "TENANT_SCHEMA_UNAVAILABLE"
-    )
-  }
+  // onboarding_status === "ready" means provisioning completed successfully.
+  // Skip the secondary isTenantProvisioned check to avoid PostgREST schema
+  // exposure issues with custom tenant schemas.
 
   const schemaName = getTenantSchemaName(tenant.id)
   const product = normalizeProductPayload(parsed.data)

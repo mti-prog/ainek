@@ -128,28 +128,40 @@ export async function getTenantBySlug(slug: string) {
 export async function isTenantProvisioned(tenantId: string) {
   const schemaName = getTenantSchemaName(tenantId)
 
-  const { error } = await supabaseAdmin
-    .schema(schemaName)
-    .from("products")
-    .select("id")
-    .limit(1)
+  // ── Check via information_schema (no PostgREST schema exposure needed) ────
+  // supabaseAdmin.schema() requires the schema to be in PostgREST's
+  // exposed-schemas list, which custom tenant schemas are not. Instead we
+  // query information_schema directly using exec_sql to check existence.
+  try {
+    const { data, error } = await supabaseAdmin.rpc("exec_sql_bool", {
+      sql: `SELECT EXISTS(
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = '${schemaName}'
+        AND table_name = 'products'
+      )`,
+    })
 
-  if (!error) {
+    if (!error && data === true) {
+      return { ready: true, schemaName }
+    }
+  } catch {
+    // exec_sql_bool doesn't exist yet — fall through to status-based check
+  }
+
+  // ── Fallback: check via onboarding_status in tenants table ───────────────
+  // If the schema was created but exec_sql_bool isn't available, trust the
+  // onboarding_status flag that provisioning sets to "ready" on success.
+  const { data: tenant } = await supabaseAdmin
+    .from("tenants")
+    .select("onboarding_status")
+    .eq("id", tenantId)
+    .single()
+
+  if (tenant?.onboarding_status === "ready") {
     return { ready: true, schemaName }
   }
 
-  const message = error.message.toLowerCase()
-  const missingSchema =
-    message.includes("schema") ||
-    message.includes("relation") ||
-    message.includes("does not exist")
-
-  return {
-    ready: false,
-    schemaName,
-    error,
-    missingSchema,
-  }
+  return { ready: false, schemaName, missingSchema: true }
 }
 
 export function isTenantOnboardingReady(tenant: Pick<OwnedTenant, "onboarding_status">) {

@@ -94,16 +94,22 @@ export default function UploadProductPage() {
   async function handleReprovision() {
     setProvisioning(true)
     setError("")
-    const res = await fetch("/api/tenant/reprovision", { method: "POST" })
-    const data = await res.json()
-    if (res.ok) {
-      setProvisioningError(false)
-      setError("")
-      router.refresh()
-    } else {
-      setError(data.error ?? "Не удалось настроить магазин. Попробуйте ещё раз.")
+    try {
+      const res = await fetch("/api/tenant/reprovision", { method: "POST" })
+      const data = await res.json()
+      if (res.ok) {
+        setProvisioningError(false)
+        setError("")
+        // Hard reload so onboarding_status re-fetches from server cleanly
+        window.location.reload()
+      } else {
+        setError(data.error ?? "Не удалось настроить магазин. Попробуйте ещё раз.")
+      }
+    } catch {
+      setError("Ошибка соединения. Попробуйте ещё раз.")
+    } finally {
+      setProvisioning(false)
     }
-    setProvisioning(false)
   }
 
   return (

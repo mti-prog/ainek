@@ -32,6 +32,10 @@ export async function POST() {
 
   try {
     await provisionTenantSchema(tenant.id)
+
+    // Mark as ready — provisioning sets the onboarding_status flag which is
+    // the authoritative signal that the schema exists. The isTenantProvisioned
+    // function uses this as its source of truth when exec_sql_bool is unavailable.
     await supabaseAdmin
       .from("tenants")
       .update({
