@@ -56,11 +56,16 @@ export async function middleware(request: NextRequest) {
         },
       })
 
+      // ⚡ Use getSession() here — reads from the cookie without a network
+      // round-trip. getUser() (which verifies with the Supabase server) runs
+      // in page/API handlers where we need full JWT validation.
+      // Using getUser() in Edge middleware caused 504 GATEWAY_TIMEOUT because
+      // every request was blocked on an outbound HTTP call to Supabase.
       const {
-        data: { user },
-      } = await supabase.auth.getUser()
+        data: { session },
+      } = await supabase.auth.getSession()
 
-      userId = user?.id ?? null
+      userId = session?.user?.id ?? null
     } catch {
       userId = null
     }
@@ -95,9 +100,10 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all paths except static files and images.
-     * Stripe webhooks bypass auth checks (verified by signature instead).
+     * Run middleware only on page routes and API routes that need tenant/auth.
+     * Skip _next/static, _next/image, favicon, public files, and webhook routes
+     * so the Edge function never gets invoked for static assets.
      */
-    "/((?!_next/static|_next/image|favicon.ico|api/webhooks).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)|api/webhooks).*)",
   ],
 }
