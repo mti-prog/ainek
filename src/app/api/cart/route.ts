@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { z } from "zod"
 import { apiError, apiOk } from "@/lib/api"
 import { logEvent } from "@/lib/logging"
-import { getTenantSchemaName } from "@/lib/tenant"
+import { getTenantSchemaName, isTenantProvisioned } from "@/lib/tenant"
 
 interface CartItem {
   productId: string
