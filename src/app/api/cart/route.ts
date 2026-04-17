@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { z } from "zod"
 import { apiError, apiOk } from "@/lib/api"
 import { logEvent } from "@/lib/logging"
-import { getTenantSchemaName, isTenantProvisioned } from "@/lib/tenant"
+import { getTenantSchemaName } from "@/lib/tenant"
 
 interface CartItem {
   productId: string
@@ -71,27 +71,6 @@ export async function POST(request: NextRequest) {
   }
 
   const { tenantId, item } = parsed.data
-  const { ready, missingSchema } = await isTenantProvisioned(tenantId)
-  if (!ready) {
-    return apiError(
-      missingSchema ? "Store is still being provisioned" : "Store is unavailable",
-      409,
-      "TENANT_SCHEMA_UNAVAILABLE"
-    )
-  }
-
-  const schemaName = getTenantSchemaName(tenantId)
-  const { data: product } = await supabaseAdmin
-    .schema(schemaName)
-    .from("products")
-    .select("id, is_active")
-    .eq("id", item.productId)
-    .eq("is_active", true)
-    .single()
-
-  if (!product) {
-    return apiError("Product not available", 404, "PRODUCT_NOT_AVAILABLE")
-  }
 
   // Fetch existing cart
   const { data: existing } = await supabaseAdmin

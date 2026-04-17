@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       store_id: storeId,
       store_slug: storeSlug,
       items,                  // full product objects (id, name, price, images, category)
-      preview_image: preview,
+      preview_url: preview,
     })
     .select("id")
     .single()

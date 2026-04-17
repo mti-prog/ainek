@@ -265,21 +265,34 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   // ── Cart ──────────────────────────────────────────────────────────────────
   async function addAllToCart() {
     if (selectedItems.length === 0) return
-    await Promise.all(
-      selectedItems.map((item) =>
-        fetch("/api/cart", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tenantId: tenant.id,
-            tenantSlug: tenant.slug,
-            productId: item.id,
-            quantity: 1,
-          }),
-        })
+    try {
+      const results = await Promise.all(
+        selectedItems.map((item) =>
+          fetch("/api/cart", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tenantId: tenant.id,
+              item: {
+                productId: item.id,
+                name: item.name,
+                price: typeof item.price === "string" ? parseFloat(item.price) || 0 : (item.price ?? 0),
+                qty: 1,
+                imageUrl: getProductImage(item),
+              },
+            }),
+          }).then((r) => r.json())
+        )
       )
-    )
-    showToast(`${selectedItems.length} товар(а) добавлено в корзину`)
+      const unauthorized = results.some((r) => r.code === "UNAUTHORIZED")
+      if (unauthorized) {
+        showToast("Войдите в аккаунт, чтобы добавить в корзину")
+      } else {
+        showToast(`${selectedItems.length} товар(а) добавлено в корзину`)
+      }
+    } catch {
+      showToast("Ошибка добавления в корзину")
+    }
   }
 
   // ── Save outfit ───────────────────────────────────────────────────────────
@@ -315,19 +328,13 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   })
 
   // ═════════════════════════════════════════════════════════════════════════════
-  // RENDER — CAMERA STEP
+  // RENDER — CAMERA STEP (full-screen, same size as studio)
   // ═════════════════════════════════════════════════════════════════════════════
   if (step === "camera") {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-130px)] px-4 py-8">
-        <div className="mb-6 text-center">
-          <h2 className="text-xl font-bold text-white mb-1">Сделайте фото</h2>
-          <p className="text-white/50 text-sm">Встаньте прямо, руки вдоль тела. Лучше полный рост.</p>
-        </div>
-
-        {/* Camera preview */}
-        <div className="relative w-full max-w-sm rounded-2xl overflow-hidden bg-black mb-6"
-          style={{ aspectRatio: "3/4" }}>
+      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 65px)" }}>
+        {/* Camera — takes all available height */}
+        <div className="relative flex-1 bg-black min-h-0">
           <video
             ref={videoRef}
             autoPlay
@@ -357,10 +364,18 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
             </div>
           )}
 
+          {/* Title overlay — top */}
+          {cameraReady && countdown === null && (
+            <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/60 to-transparent px-4 pt-4 pb-8 text-center pointer-events-none">
+              <h2 className="text-xl font-bold text-white mb-0.5">Сделайте фото</h2>
+              <p className="text-white/60 text-sm">Встаньте прямо, руки вдоль тела. Лучше полный рост.</p>
+            </div>
+          )}
+
           {/* Silhouette guide */}
           {cameraReady && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <svg className="w-32 h-56 text-white/15" viewBox="0 0 80 140" fill="none" stroke="currentColor">
+              <svg className="h-3/4 opacity-15 text-white" viewBox="0 0 80 140" fill="none" stroke="currentColor">
                 <ellipse cx="40" cy="18" rx="14" ry="16" strokeWidth="1.5" />
                 <path d="M26 34 C18 50 14 80 16 110 H64 C66 80 62 50 54 34" strokeWidth="1.5" />
                 <path d="M26 34 C20 46 16 56 14 70" strokeWidth="1.5" />
@@ -371,41 +386,44 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
             </div>
           )}
 
+          {/* Countdown overlay */}
           {countdown !== null && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 pointer-events-none">
-              <span className="text-7xl font-bold text-white drop-shadow-2xl">{countdown}</span>
-              <p className="mt-3 text-sm text-white/85">Подготовьте позу, фото будет сделано автоматически</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 pointer-events-none">
+              <span className="text-[120px] font-bold text-white leading-none drop-shadow-2xl">{countdown}</span>
+              <p className="mt-4 text-base text-white/80">Подготовьте позу, фото будет сделано автоматически</p>
             </div>
           )}
         </div>
 
         <canvas ref={canvasRef} className="hidden" />
 
-        {/* Controls */}
-        <div className="flex flex-col items-center gap-4">
-          <button
-            onClick={capturePhoto}
-            disabled={!cameraReady || !!cameraError || countdown !== null}
-            className="w-18 h-18 rounded-full border-4 border-white/30 flex items-center justify-center disabled:opacity-40 hover:border-white/60 transition active:scale-95"
-            style={{ width: 72, height: 72 }}
-            aria-label={countdown !== null ? `Снимок через ${countdown} сек.` : "Сделать фото"}
-          >
-            <div className="w-14 h-14 rounded-full bg-white" />
-          </button>
-
-          {countdown !== null && (
-            <p className="text-white/65 text-xs">Снимок через {countdown} сек.</p>
-          )}
-
+        {/* Controls bar — bottom */}
+        <div className="flex items-center justify-center gap-6 px-6 py-4 bg-black/80 flex-shrink-0">
           <button
             onClick={() => setIsMirrored((m) => !m)}
-            className="flex items-center gap-1.5 text-white/40 text-xs hover:text-white/60 transition"
+            className="flex items-center gap-1.5 text-white/40 text-xs hover:text-white/60 transition w-24 justify-end"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
             </svg>
             {isMirrored ? "Зеркало вкл" : "Зеркало выкл"}
           </button>
+
+          <button
+            onClick={capturePhoto}
+            disabled={!cameraReady || !!cameraError || countdown !== null}
+            className="rounded-full border-4 border-white/40 flex items-center justify-center disabled:opacity-40 hover:border-white/70 transition active:scale-95"
+            style={{ width: 72, height: 72 }}
+            aria-label={countdown !== null ? `Снимок через ${countdown} сек.` : "Сделать фото"}
+          >
+            <div className="w-14 h-14 rounded-full bg-white" />
+          </button>
+
+          <div className="w-24 text-center">
+            {countdown !== null && (
+              <p className="text-white/60 text-xs">Снимок через {countdown} сек.</p>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -568,7 +586,8 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
         </div>
 
         {/* Products grid */}
-        <div className="flex-1 overflow-y-auto p-2 grid grid-cols-2 gap-2 content-start">
+        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="p-2 grid grid-cols-2 gap-2">
           {filteredProducts.length === 0 ? (
             <div className="col-span-2 py-10 text-center text-white/30 text-xs">
               Нет товаров
@@ -621,6 +640,7 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
               )
             })
           )}
+        </div>
         </div>
 
         {/* Footer: selected count */}

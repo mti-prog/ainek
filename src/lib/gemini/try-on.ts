@@ -21,9 +21,7 @@ function rotateKey() {
   currentKeyIndex = (currentKeyIndex + 1) % Math.max(API_KEYS.length, 1)
 }
 
-// Note: model ID in the existing MVP is "gemini-3.1-flash-image-preview".
-// Verify against Google AI console — SKILL.md references "gemini-2.0-flash-preview-image-generation".
-const MODEL = "gemini-3.1-flash-image-preview"
+const MODEL = "gemini-2.0-flash-preview-image-generation"
 
 interface TryOnInput {
   userPhotoBase64: string          // full data-URL or raw base64
