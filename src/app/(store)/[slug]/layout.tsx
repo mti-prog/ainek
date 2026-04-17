@@ -63,7 +63,7 @@ export default async function StoreLayout({ children, params }: Props) {
             </svg>
             <span className="text-[10px]">Каталог</span>
           </Link>
-          <Link href={`/${slug}/cart`} className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-white/10 hover:text-white transition" title="Корзина">
+          <Link href={`/${slug}/cart?tenantId=${tenant.id}`} className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-white/10 hover:text-white transition" title="Корзина">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
             </svg>

@@ -19,19 +19,31 @@ interface CartItem {
 function CartContent({ slug }: { slug: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const tenantId = searchParams.get("tenantId") ?? ""
+  const tenantIdParam = searchParams.get("tenantId") ?? ""
 
+  const [tenantId, setTenantId] = useState(tenantIdParam)
   const [items, setItems] = useState<CartItem[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Resolve tenantId from slug if not in URL params
   useEffect(() => {
-    if (!tenantId) { setLoading(false); return }
+    if (tenantIdParam) { setTenantId(tenantIdParam); return }
+    fetch(`/api/tenant/info?slug=${slug}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.id) setTenantId(d.id) })
+      .catch(() => {})
+  }, [slug, tenantIdParam])
+
+  useEffect(() => {
+    if (!tenantId) return
+    setLoading(true)
     fetch(`/api/cart?tenantId=${tenantId}`)
       .then((r) => r.json())
       .then((d) => {
         setItems(d.items ?? [])
         setLoading(false)
       })
+      .catch(() => setLoading(false))
   }, [tenantId])
 
   const subtotal = items.reduce((s, i) => s + Number(i.price) * i.qty, 0)

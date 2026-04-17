@@ -22,6 +22,9 @@ interface Props {
   preloadedItems?: StudioProduct[]
 }
 
+// Must match USER_LIFETIME_TRYON_LIMIT in /api/try-on/route.ts
+const USER_TRYON_LIMIT = 5
+
 const CATEGORIES = [
   { key: "all",         label: "Все" },
   { key: "tops",        label: "Верх" },
@@ -213,7 +216,8 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
       const data = await res.json()
       if (!res.ok) {
         const codeMsg: Record<string, string> = {
-          USER_DAILY_LIMIT_REACHED: "Дневной лимит примерок исчерпан (5/день)",
+          USER_LIFETIME_LIMIT_REACHED: `Вы использовали все ${USER_TRYON_LIMIT} бесплатных примерок 😔`,
+          USER_DAILY_LIMIT_REACHED: "Дневной лимит примерок исчерпан",
           TENANT_QUOTA_EXCEEDED: "Магазин исчерпал месячный лимит примерок",
           UNAUTHORIZED: "Войдите, чтобы примерять",
         }

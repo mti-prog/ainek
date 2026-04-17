@@ -9,6 +9,9 @@ import { logEvent } from "@/lib/logging"
 
 const AI_COST_USD = 0.0670
 
+// Permanent per-user try-on limit — never resets
+const USER_LIFETIME_TRYON_LIMIT = 5
+
 export async function POST(request: NextRequest) {
   // ── 1. Auth ───────────────────────────────────────────────────────────────
   const supabase = await createSupabaseServerClient()
@@ -19,6 +22,23 @@ export async function POST(request: NextRequest) {
   }
 
   const userId = user.id
+
+  // ── 1b. Permanent user lifetime limit ────────────────────────────────────
+  // Count only real generations (not cache hits) — permanent, never resets
+  const { count: lifetimeCount } = await supabaseAdmin
+    .from("try_on_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("is_cached", false)
+
+  if ((lifetimeCount ?? 0) >= USER_LIFETIME_TRYON_LIMIT) {
+    return apiError(
+      `Лимит примерок исчерпан. Вам доступно ${USER_LIFETIME_TRYON_LIMIT} бесплатных примерок.`,
+      429,
+      "USER_LIFETIME_LIMIT_REACHED",
+      { used: lifetimeCount, limit: USER_LIFETIME_TRYON_LIMIT }
+    )
+  }
 
   // ── 2. Parse body ─────────────────────────────────────────────────────────
   const body = await request.json()
