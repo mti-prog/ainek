@@ -1,9 +1,20 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server"
+import { supabaseAdmin } from "@/lib/supabase/admin"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { getOwnedTenantForUser, getTenantSchemaName, isTenantOnboardingReady } from "@/lib/tenant"
-import db from "@/lib/db"
+
+type Product = {
+  id: string
+  name: string
+  price: string
+  currency: string
+  category: string
+  images: Array<{ url: string; isPrimary?: boolean }>
+  is_active: boolean
+  try_on_count: number
+}
 
 export default async function WardrobePage() {
   const supabase = await createSupabaseServerClient()
@@ -16,21 +27,21 @@ export default async function WardrobePage() {
 
   const schemaName = getTenantSchemaName(tenant.id)
 
-  // Use direct DB — PostgREST cannot access custom tenant schemas
-  let products: Array<{
-    id: string; name: string; price: string; currency: string;
-    category: string; images: Array<{ url: string; isPrimary?: boolean }>;
-    is_active: boolean; try_on_count: number;
-  }> = []
+  // Use exec_sql_json RPC — works without DATABASE_URL and without PostgREST whitelist
+  let products: Product[] = []
 
   if (isTenantOnboardingReady(tenant)) {
     try {
-      products = await db.unsafe(
-        `SELECT id, name, price, currency, category, images, is_active,
-                COALESCE(try_on_count, 0) AS try_on_count
-         FROM "${schemaName}".products
-         ORDER BY created_at DESC`
-      ) as typeof products
+      const sql = `
+        SELECT id, name, price::text, currency, category, images, is_active,
+               COALESCE(try_on_count, 0) AS try_on_count
+        FROM "${schemaName}".products
+        ORDER BY created_at DESC
+      `
+      const { data, error } = await supabaseAdmin.rpc("exec_sql_json", { sql })
+      if (!error && Array.isArray(data)) {
+        products = data as Product[]
+      }
     } catch {
       // Schema not provisioned yet — show empty state
     }
