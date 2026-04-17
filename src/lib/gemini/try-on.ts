@@ -21,7 +21,7 @@ function rotateKey() {
   currentKeyIndex = (currentKeyIndex + 1) % Math.max(API_KEYS.length, 1)
 }
 
-const MODEL = "gemini-2.0-flash-exp"
+const MODEL = "gemini-3.1-flash-image-preview"
 
 interface TryOnInput {
   userPhotoBase64: string          // full data-URL or raw base64
