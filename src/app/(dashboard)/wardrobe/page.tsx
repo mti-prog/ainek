@@ -1,9 +1,9 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server"
-import { supabaseAdmin } from "@/lib/supabase/admin"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { getOwnedTenantForUser, getTenantSchemaName, isTenantOnboardingReady } from "@/lib/tenant"
+import db from "@/lib/db"
 
 export default async function WardrobePage() {
   const supabase = await createSupabaseServerClient()
@@ -16,20 +16,32 @@ export default async function WardrobePage() {
 
   const schemaName = getTenantSchemaName(tenant.id)
 
-  const { data: products } = isTenantOnboardingReady(tenant)
-    ? await supabaseAdmin
-        .schema(schemaName)
-        .from("products")
-        .select("id, name, price, currency, category, images, is_active, try_on_count")
-        .order("created_at", { ascending: false })
-    : { data: [] }
+  // Use direct DB — PostgREST cannot access custom tenant schemas
+  let products: Array<{
+    id: string; name: string; price: string; currency: string;
+    category: string; images: Array<{ url: string; isPrimary?: boolean }>;
+    is_active: boolean; try_on_count: number;
+  }> = []
+
+  if (isTenantOnboardingReady(tenant)) {
+    try {
+      products = await db.unsafe(
+        `SELECT id, name, price, currency, category, images, is_active,
+                COALESCE(try_on_count, 0) AS try_on_count
+         FROM "${schemaName}".products
+         ORDER BY created_at DESC`
+      ) as typeof products
+    } catch {
+      // Schema not provisioned yet — show empty state
+    }
+  }
 
   return (
     <div className="p-8 max-w-5xl">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-white">Гардероб</h1>
-          <p className="text-white/40 text-sm">{products?.length ?? 0} товаров</p>
+          <p className="text-white/40 text-sm">{products.length} товаров</p>
         </div>
         <div className="flex gap-3">
           <Link
@@ -58,7 +70,7 @@ export default async function WardrobePage() {
             Открыть обзор
           </Link>
         </div>
-      ) : !products?.length ? (
+      ) : !products.length ? (
         <div className="text-center py-24 text-white/30">
           <p className="text-lg mb-2">Каталог пустой</p>
           <p className="text-sm mb-6">Добавьте первый товар, чтобы покупатели могли примерять</p>
@@ -72,12 +84,11 @@ export default async function WardrobePage() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {products.map((p) => {
-            const images = p.images as Array<{ url: string; isPrimary?: boolean }>
-            const thumb = images?.find((i) => i.isPrimary) ?? images?.[0]
+            const thumb = p.images?.find((i) => i.isPrimary) ?? p.images?.[0]
             return (
               <div key={p.id} className="rounded-xl overflow-hidden bg-white/5 border border-white/10">
                 <div className="aspect-[3/4] bg-white/5 relative">
-                  {thumb ? (
+                  {thumb?.url ? (
                     <Image
                       src={thumb.url}
                       alt={p.name}
