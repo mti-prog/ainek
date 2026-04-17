@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { notFound } from "next/navigation"
 import { getTenantSchemaName } from "@/lib/tenant"
 import TryOnStudio, { type StudioProduct } from "./TryOnStudio"
+import db from "@/lib/db"
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -148,16 +149,22 @@ export default async function StorePage({ params, searchParams }: Props) {
     )
   }
 
-  // ── Products ──────────────────────────────────────────────────────────────
+  // ── Products (direct DB — PostgREST can't access custom tenant schemas) ───
   const schemaName = getTenantSchemaName(tenant.id)
 
-  const { data: products } = await supabaseAdmin
-    .schema(schemaName)
-    .from("products")
-    .select("id, name, price, currency, images, category, sizes, colors")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(200)
+  // postgres.js returns Row[] — cast via unknown to reach the concrete type
+  let products: StudioProduct[] = []
+  try {
+    products = await db.unsafe(
+      `SELECT id, name, price, currency, images, category, sizes, colors
+       FROM "${schemaName}".products
+       WHERE is_active = TRUE
+       ORDER BY created_at DESC
+       LIMIT 200`
+    )
+  } catch {
+    // Schema not provisioned yet — show empty wardrobe with custom items only
+  }
 
   const studioProducts: StudioProduct[] = (products ?? []).map((p) => ({
     id: p.id,

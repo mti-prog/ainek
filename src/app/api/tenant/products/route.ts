@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { apiError, apiOk } from "@/lib/api"
@@ -7,9 +7,9 @@ import {
   getOwnedTenantForUser,
   getTenantSchemaName,
   isTenantOnboardingReady,
-  isTenantProvisioned,
 } from "@/lib/tenant"
 import { logEvent } from "@/lib/logging"
+import db from "@/lib/db"
 
 // ── GET /api/tenant/products ─────────────────────────────────────────────────
 // Returns paginated products for a store.
@@ -17,8 +17,7 @@ import { logEvent } from "@/lib/logging"
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
-  const tenantId =
-    searchParams.get("tenantId") ?? request.headers.get("x-tenant-id")
+  const tenantId = searchParams.get("tenantId") ?? request.headers.get("x-tenant-id")
   const category = searchParams.get("category")
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
   const limit = Math.min(50, parseInt(searchParams.get("limit") ?? "20"))
@@ -28,41 +27,29 @@ export async function GET(request: NextRequest) {
     return apiError("tenantId required", 400, "TENANT_ID_REQUIRED")
   }
 
-  const { ready, schemaName, missingSchema } = await isTenantProvisioned(tenantId)
-  if (!ready && missingSchema) {
-    return apiError("Store is still being provisioned", 409, "TENANT_NOT_PROVISIONED")
-  }
+  const schemaName = getTenantSchemaName(tenantId)
 
-  let query = supabaseAdmin
-    .schema(schemaName)
-    .from("products")
-    .select("*", { count: "exact" })
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1)
+  try {
+    // Use direct DB connection — supabase-js can't query custom tenant schemas
+    // because PostgREST only exposes whitelisted schemas.
+    const products = await db.unsafe(
+      `SELECT *, COUNT(*) OVER() AS _total
+       FROM "${schemaName}".products
+       WHERE is_active = TRUE
+       ${category && category !== "all" ? `AND category = '${category.replace(/'/g, "''")}'` : ""}
+       ORDER BY created_at DESC
+       LIMIT ${limit} OFFSET ${offset}`
+    )
 
-  if (category && category !== "all") {
-    query = query.eq("category", category)
-  }
+    const total = products.length > 0 ? parseInt(products[0]._total as string) : 0
+    const rows = products.map(({ _total, ...p }) => p)
 
-  const { data, error, count } = await query
-
-  if (error) {
-    logEvent({
-      event: "tenant.products.list_failed",
-      level: "error",
-      tenantId,
-      message: error.message,
-    })
+    return apiOk({ products: rows, total, page, limit })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logEvent({ event: "tenant.products.list_failed", level: "error", tenantId, message })
     return apiError("Failed to load products", 500, "PRODUCT_LIST_FAILED")
   }
-
-  return apiOk({
-    products: data ?? [],
-    total: count ?? 0,
-    page,
-    limit,
-  })
 }
 
 // ── POST /api/tenant/products ────────────────────────────────────────────────
@@ -72,15 +59,10 @@ export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) {
-    return apiError("Unauthorized", 401, "UNAUTHORIZED")
-  }
+  if (!user) return apiError("Unauthorized", 401, "UNAUTHORIZED")
 
   const tenant = await getOwnedTenantForUser(user)
-
-  if (!tenant) {
-    return apiError("Tenant not found", 403, "TENANT_NOT_FOUND")
-  }
+  if (!tenant) return apiError("Tenant not found", 403, "TENANT_NOT_FOUND")
 
   if (!isTenantOnboardingReady(tenant)) {
     return apiError(
@@ -93,57 +75,57 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json()
   const parsed = createProductSchema.safeParse(body)
-
   if (!parsed.success) {
     return apiError(parsed.error.issues[0].message, 400, "INVALID_PRODUCT_PAYLOAD")
   }
 
-  // onboarding_status === "ready" means provisioning completed successfully.
-  // Skip the secondary isTenantProvisioned check to avoid PostgREST schema
-  // exposure issues with custom tenant schemas.
-
   const schemaName = getTenantSchemaName(tenant.id)
   const product = normalizeProductPayload(parsed.data)
 
-  const { data, error } = await supabaseAdmin
-    .schema(schemaName)
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      name: product.name,
-      description: product.description,
-      category: product.category,
-      subcategory: product.subcategory,
-      brand: product.brand,
-      price: product.price,
-      currency: product.currency,
-      sku: product.sku,
-      images: product.images,
-      sizes: product.sizes,
-      colors: product.colors,
-      is_active: product.isActive,
-      is_virtual_try_on_enabled: product.isVirtualTryOnEnabled,
-    })
-    .select("id")
-    .single()
+  try {
+    // Use direct DB connection — supabase-js PostgREST can't write to
+    // custom tenant schemas (store_*) that aren't in the exposed-schemas list.
+    const [row] = await db`
+      INSERT INTO ${db.unsafe(`"${schemaName}".products`)} (
+        tenant_id, name, description, category, subcategory,
+        brand, price, currency, sku, images, sizes, colors,
+        is_active, is_virtual_try_on_enabled
+      ) VALUES (
+        ${tenant.id}::uuid,
+        ${product.name},
+        ${product.description ?? null},
+        ${product.category ?? null},
+        ${product.subcategory ?? null},
+        ${product.brand ?? null},
+        ${product.price},
+        ${product.currency ?? "KGS"},
+        ${product.sku ?? null},
+        ${JSON.stringify(product.images ?? [])}::jsonb,
+        ${JSON.stringify(product.sizes ?? [])}::jsonb,
+        ${JSON.stringify(product.colors ?? [])}::jsonb,
+        ${product.isActive ?? true},
+        ${product.isVirtualTryOnEnabled ?? true}
+      )
+      RETURNING id
+    `
 
-  if (error) {
+    logEvent({
+      event: "tenant.products.created",
+      tenantId: tenant.id,
+      ownerUserId: user.id,
+      productId: row.id,
+    })
+
+    return apiOk({ productId: row.id }, 201)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     logEvent({
       event: "tenant.products.create_failed",
       level: "error",
       tenantId: tenant.id,
       ownerUserId: user.id,
-      message: error.message,
+      message,
     })
-    return apiError("Failed to create product", 500, "PRODUCT_CREATE_FAILED")
+    return apiError(`Failed to create product: ${message}`, 500, "PRODUCT_CREATE_FAILED")
   }
-
-  logEvent({
-    event: "tenant.products.created",
-    tenantId: tenant.id,
-    ownerUserId: user.id,
-    productId: data.id,
-  })
-
-  return apiOk({ productId: data.id }, 201)
 }

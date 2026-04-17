@@ -10,6 +10,7 @@ import {
   isTenantProvisioned,
 } from "@/lib/tenant"
 import { provisionTenantSchema } from "@/lib/supabase/provision-tenant"
+import db from "@/lib/db"
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient()
@@ -40,7 +41,8 @@ export default async function DashboardPage() {
 
   const schemaName = getTenantSchemaName(tenant.id)
 
-  const [schemaStatus, sessionsResult, ordersResult, productsResult] = await Promise.all([
+  // ── Fetch dashboard data (use direct DB for custom tenant schemas) ─────────
+  const [schemaStatus, sessionsResult, orders, productCount] = await Promise.all([
     isTenantProvisioned(tenant.id),
     supabaseAdmin
       .from("try_on_sessions")
@@ -48,22 +50,18 @@ export default async function DashboardPage() {
       .eq("tenant_id", tenant.id)
       .order("created_at", { ascending: false })
       .limit(5),
-    supabaseAdmin
-      .schema(schemaName)
-      .from("orders")
-      .select("id, status, total, currency, created_at, items")
-      .order("created_at", { ascending: false })
-      .limit(5),
-    supabaseAdmin
-      .schema(schemaName)
-      .from("products")
-      .select("*", { count: "exact", head: true }),
+    db.unsafe(
+      `SELECT id, status, total, currency, created_at, items
+       FROM "${schemaName}".orders
+       ORDER BY created_at DESC LIMIT 5`
+    ).catch(() => [] as Record<string, unknown>[]),
+    db.unsafe(
+      `SELECT COUNT(*)::int AS count FROM "${schemaName}".products WHERE is_active = TRUE`
+    ).then((r) => (r[0]?.count as number) ?? 0).catch(() => 0),
   ])
 
   const sessions = sessionsResult.data
   const sessionCount = sessionsResult.count
-  const orders = ordersResult.data
-  const productCount = productsResult.count
 
   const trialDaysLeft = tenant.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(tenant.trial_ends_at).getTime() - Date.now()) / 86400000))
@@ -134,7 +132,7 @@ export default async function DashboardPage() {
         <StatCard label="Всего примерок" value={sessionCount ?? 0} />
         <StatCard
           label="Заказов сегодня"
-          value={(orders ?? []).filter((o) =>
+          value={(orders as Array<{ created_at: string }>).filter((o) =>
             new Date(o.created_at).toDateString() === new Date().toDateString()
           ).length}
         />
@@ -175,11 +173,11 @@ export default async function DashboardPage() {
 
         <div className="p-4 rounded-xl bg-white/5 border border-white/10">
           <h2 className="text-white font-medium mb-4">Последние заказы</h2>
-          {!orders?.length ? (
+          {!(orders as unknown[]).length ? (
             <p className="text-white/30 text-sm">Заказов пока нет</p>
           ) : (
             <div className="space-y-2">
-              {orders.map((o) => (
+              {(orders as Array<{ id: string; total: string; currency: string; status: string }>).map((o) => (
                 <div key={o.id} className="flex items-center justify-between text-sm">
                   <span className="text-white/60">{parseFloat(o.total).toLocaleString("ru-RU")} {o.currency}</span>
                   <span className={`px-2 py-0.5 rounded-full text-xs ${
