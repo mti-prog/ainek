@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { z } from "zod"
 import { apiError, apiOk } from "@/lib/api"
 import { logEvent } from "@/lib/logging"
-import { getTenantSchemaName, isTenantProvisioned } from "@/lib/tenant"
+import { getTenantSchemaName } from "@/lib/tenant"
 
 interface CartItem {
   productId: string
@@ -45,9 +45,6 @@ export async function GET(request: NextRequest) {
 
   const tenantId = request.nextUrl.searchParams.get("tenantId")
   if (!tenantId) return apiError("tenantId required", 400, "TENANT_ID_REQUIRED")
-
-  const { ready } = await isTenantProvisioned(tenantId)
-  if (!ready) return apiOk({ items: [] })
 
   const { data } = await supabaseAdmin
     .from("carts")

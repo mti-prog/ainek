@@ -89,6 +89,11 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
+  // ── Lifetime quota ────────────────────────────────────────────────────────
+  const [triesUsed, setTriesUsed] = useState<number | null>(null)
+  const [triesLimit, setTriesLimit] = useState<number>(5)
+  const triesLeft = triesUsed !== null ? Math.max(0, triesLimit - triesUsed) : null
+
   // ── Wardrobe ──────────────────────────────────────────────────────────────
   const [activeCategory, setActiveCategory] = useState("all")
   const [wardrobeSearch, setWardrobeSearch] = useState("")
@@ -106,6 +111,17 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
     setToast(msg)
     setTimeout(() => setToast(null), 2500)
   }
+
+  // ── Load quota on mount ───────────────────────────────────────────────────
+  useEffect(() => {
+    fetch(`/api/try-on/quota?tenantId=${tenant.id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d.used === "number") setTriesUsed(d.used)
+        if (typeof d.limit === "number") setTriesLimit(d.limit)
+      })
+      .catch(() => {})
+  }, [tenant.id])
 
   // ── Camera lifecycle ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -224,13 +240,17 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
         setGenerateError(codeMsg[data.code] ?? data.error ?? data.details?.message ?? "Ошибка генерации")
       } else {
         setGeneratedImage(data.generatedImage)
+        // Update local counter when a real (non-cached) generation completes
+        if (!data.cached) {
+          setTriesUsed((prev) => (prev !== null ? prev + 1 : 1))
+        }
       }
     } catch {
       setGenerateError("Ошибка соединения. Проверьте интернет.")
     } finally {
       setIsGenerating(false)
     }
-  }, [tenant.id, tenant.slug])
+  }, [tenant.id, tenant.slug, triesLimit])
 
   useEffect(() => {
     if (step !== "studio" || !userPhoto) return
@@ -526,6 +546,19 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
           </div>
         )}
 
+        {/* Quota warning banner */}
+        {triesLeft !== null && triesLeft <= 2 && (
+          <div className={`flex-shrink-0 rounded-xl px-3 py-2 text-xs text-center ${
+            triesLeft === 0
+              ? "bg-red-500/15 border border-red-500/30 text-red-300"
+              : "bg-yellow-500/10 border border-yellow-500/20 text-yellow-300"
+          }`}>
+            {triesLeft === 0
+              ? `Бесплатные примерки закончились. Доступно ${triesLimit} примерок на аккаунт.`
+              : `Осталось ${triesLeft} бесплатных примерк${triesLeft === 1 ? "а" : "и"} из ${triesLimit}`}
+          </div>
+        )}
+
         {/* Action buttons */}
         <div className="flex gap-2 flex-shrink-0">
           <button
@@ -556,7 +589,21 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
 
         {/* Header */}
         <div className="px-3 py-2.5 border-b border-white/10 flex-shrink-0">
-          <p className="text-white/50 text-[11px] font-semibold uppercase tracking-widest mb-2">Гардероб</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-white/50 text-[11px] font-semibold uppercase tracking-widest">Гардероб</p>
+            {/* Try-on counter — always visible */}
+            {triesLeft !== null && (
+              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                triesLeft === 0
+                  ? "bg-red-500/20 text-red-400"
+                  : triesLeft <= 2
+                  ? "bg-yellow-500/20 text-yellow-400"
+                  : "bg-violet-500/20 text-violet-300"
+              }`}>
+                {triesLeft === 0 ? "Лимит исчерпан" : `${triesLeft} из ${triesLimit} примерок`}
+              </span>
+            )}
+          </div>
           {/* Search */}
           <div className="relative">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
