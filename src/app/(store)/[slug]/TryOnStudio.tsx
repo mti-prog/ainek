@@ -217,7 +217,7 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
           TENANT_QUOTA_EXCEEDED: "Магазин исчерпал месячный лимит примерок",
           UNAUTHORIZED: "Войдите, чтобы примерять",
         }
-        setGenerateError(codeMsg[data.code] ?? data.message ?? "Ошибка генерации")
+        setGenerateError(codeMsg[data.code] ?? data.error ?? data.details?.message ?? "Ошибка генерации")
       } else {
         setGeneratedImage(data.generatedImage)
       }
