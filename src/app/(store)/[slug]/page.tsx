@@ -2,7 +2,6 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { notFound } from "next/navigation"
 import { getTenantSchemaName } from "@/lib/tenant"
 import TryOnStudio, { type StudioProduct } from "./TryOnStudio"
-import db from "@/lib/db"
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -52,24 +51,27 @@ export default async function StorePage({ params, searchParams }: Props) {
     )
   }
 
-  // ── Products (direct DB — PostgREST can't access custom tenant schemas) ───
+  // ── Products via exec_sql_json RPC (no DATABASE_URL needed, no PostgREST whitelist) ───
   const schemaName = getTenantSchemaName(tenant.id)
 
-  // postgres.js returns Row[] — cast via unknown to reach the concrete type
-  let products: StudioProduct[] = []
+  let rawProducts: StudioProduct[] = []
   try {
-    products = await db.unsafe(
-      `SELECT id, name, price, currency, images, category, sizes, colors
-       FROM "${schemaName}".products
-       WHERE is_active = TRUE
-       ORDER BY created_at DESC
-       LIMIT 200`
-    )
+    const sql = `
+      SELECT id, name, price::text AS price, currency, images, category, sizes, colors
+      FROM "${schemaName}".products
+      WHERE is_active = TRUE
+      ORDER BY created_at DESC
+      LIMIT 200
+    `
+    const { data, error } = await supabaseAdmin.rpc("exec_sql_json", { sql })
+    if (!error && Array.isArray(data)) {
+      rawProducts = data as StudioProduct[]
+    }
   } catch {
-    // Schema not provisioned yet — show empty wardrobe with custom items only
+    // Schema not provisioned yet — show empty wardrobe
   }
 
-  const studioProducts: StudioProduct[] = (products ?? []).map((p) => ({
+  const studioProducts: StudioProduct[] = rawProducts.map((p) => ({
     id: p.id,
     name: p.name,
     price: p.price,
