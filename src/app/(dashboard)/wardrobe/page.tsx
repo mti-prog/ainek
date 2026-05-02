@@ -59,7 +59,7 @@ export default async function WardrobePage() {
             href="/dashboard/wardrobe/import"
             className="px-4 py-2 rounded-xl bg-white/10 text-white text-sm hover:bg-white/15 transition"
           >
-            Импорт CSV
+            Импорт CSV / JSON
           </Link>
           <Link
             href="/dashboard/wardrobe/upload"

@@ -22,6 +22,12 @@ interface Props {
   preloadedItems?: StudioProduct[]
 }
 
+interface StyleRecommendations {
+  rationale: string
+  stylingTips: string[]
+  recommendedItemIds: string[]
+}
+
 // Must match USER_LIFETIME_TRYON_LIMIT in /api/try-on/route.ts
 const USER_TRYON_LIMIT = 3
 
@@ -89,6 +95,10 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [autoCapture, setAutoCapture] = useState(false)
+  const [wardrobeTab, setWardrobeTab] = useState<"catalog" | "recommended">("catalog")
+  const [styleRecommendations, setStyleRecommendations] = useState<StyleRecommendations | null>(null)
+  const [styleRecommendationsLoading, setStyleRecommendationsLoading] = useState(false)
+  const [styleRecommendationsError, setStyleRecommendationsError] = useState<string | null>(null)
 
   // ── Lifetime quota ────────────────────────────────────────────────────────
   const [triesUsed, setTriesUsed] = useState<number | null>(null)
@@ -129,6 +139,7 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const genTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const recTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const countdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevItemKeysRef = useRef<string>("")
 
@@ -376,7 +387,7 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
     } finally {
       setIsGenerating(false)
     }
-  }, [tenant.id, tenant.slug, triesLimit])
+  }, [tenant.id, tenant.slug])
 
   useEffect(() => {
     if (step !== "studio" || !userPhoto) return
@@ -397,6 +408,61 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
 
     return () => { if (genTimeoutRef.current) clearTimeout(genTimeoutRef.current) }
   }, [selectedItems, step, userPhoto, generateOutfit])
+
+  useEffect(() => {
+    if (recTimeoutRef.current) clearTimeout(recTimeoutRef.current)
+
+    if (selectedItems.length === 0) {
+      setStyleRecommendations(null)
+      setStyleRecommendationsError(null)
+      setStyleRecommendationsLoading(false)
+      setWardrobeTab("catalog")
+      return
+    }
+
+    setStyleRecommendationsLoading(true)
+    setStyleRecommendationsError(null)
+
+    recTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/style-recommendations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            selectedItems: selectedItems.map((item) => ({
+              id: item.id,
+              name: item.name,
+              category: item.category,
+            })),
+            catalogItems: products.map((product) => ({
+              id: product.id,
+              name: product.name,
+              category: product.category,
+              price: product.price,
+            })),
+          }),
+        })
+
+        const data = await res.json()
+        if (!res.ok) {
+          setStyleRecommendationsError(data.error ?? "Не удалось получить рекомендации")
+          setStyleRecommendations(null)
+          return
+        }
+
+        setStyleRecommendations(data.recommendations ?? null)
+      } catch {
+        setStyleRecommendationsError("Ошибка соединения при подборе рекомендаций")
+        setStyleRecommendations(null)
+      } finally {
+        setStyleRecommendationsLoading(false)
+      }
+    }, 500)
+
+    return () => {
+      if (recTimeoutRef.current) clearTimeout(recTimeoutRef.current)
+    }
+  }, [products, selectedItems])
 
   // ── Item toggle ───────────────────────────────────────────────────────────
   function toggleItem(product: StudioProduct) {
@@ -474,6 +540,17 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
     const matchCat = activeCategory === "all" || p.category === activeCategory
     const matchSearch = wardrobeSearch === "" ||
       p.name.toLowerCase().includes(wardrobeSearch.toLowerCase())
+    return matchCat && matchSearch
+  })
+
+  const recommendedProducts = products.filter((product) =>
+    styleRecommendations?.recommendedItemIds.includes(product.id)
+  )
+
+  const filteredRecommendedProducts = recommendedProducts.filter((product) => {
+    const matchCat = activeCategory === "all" || product.category === activeCategory
+    const matchSearch = wardrobeSearch === "" ||
+      product.name.toLowerCase().includes(wardrobeSearch.toLowerCase())
     return matchCat && matchSearch
   })
 
@@ -753,6 +830,31 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
           </div>
         </div>
 
+        {/* Main tabs */}
+        <div className="flex gap-1 px-2 py-2 border-b border-white/10 flex-shrink-0">
+          <button
+            onClick={() => setWardrobeTab("catalog")}
+            className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              wardrobeTab === "catalog"
+                ? "bg-violet-600 text-white"
+                : "bg-white/10 text-white/60 hover:bg-white/15"
+            }`}
+          >
+            Каталог
+          </button>
+          <button
+            onClick={() => setWardrobeTab("recommended")}
+            className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              wardrobeTab === "recommended"
+                ? "bg-emerald-600 text-white"
+                : "bg-white/10 text-white/60 hover:bg-white/15"
+            }`}
+          >
+            Рекомендуемые
+            {styleRecommendations?.recommendedItemIds.length ? ` (${styleRecommendations.recommendedItemIds.length})` : ""}
+          </button>
+        </div>
+
         {/* Category tabs */}
         <div className="flex gap-1 px-2 py-2 overflow-x-auto flex-shrink-0 border-b border-white/10">
           {CATEGORIES.map((cat) => (
@@ -773,12 +875,40 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
         {/* Products grid */}
         <div className="flex-1 overflow-y-auto min-h-0">
         <div className="p-2 grid grid-cols-2 gap-2">
-          {filteredProducts.length === 0 ? (
+          {wardrobeTab === "recommended" && styleRecommendations && (
+            <div className="col-span-2 mb-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2.5">
+              <p className="text-emerald-300 text-[11px] font-semibold uppercase tracking-widest mb-1">AI stylist</p>
+              <p className="text-white/80 text-xs leading-relaxed">{styleRecommendations.rationale}</p>
+              {styleRecommendations.stylingTips.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {styleRecommendations.stylingTips.map((tip) => (
+                    <span key={tip} className="px-2 py-1 rounded-full bg-white/10 text-white/70 text-[10px]">
+                      {tip}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {styleRecommendationsLoading && wardrobeTab === "recommended" ? (
+            <div className="col-span-2 py-10 text-center text-white/40 text-xs">
+              ИИ подбирает вещи к вашему образу…
+            </div>
+          ) : styleRecommendationsError && wardrobeTab === "recommended" ? (
+            <div className="col-span-2 py-10 text-center text-red-300 text-xs">
+              {styleRecommendationsError}
+            </div>
+          ) : wardrobeTab === "recommended" && selectedItems.length === 0 ? (
             <div className="col-span-2 py-10 text-center text-white/30 text-xs">
-              Нет товаров
+              Выберите вещь, и здесь появятся рекомендации ИИ
+            </div>
+          ) : (wardrobeTab === "recommended" ? filteredRecommendedProducts : filteredProducts).length === 0 ? (
+            <div className="col-span-2 py-10 text-center text-white/30 text-xs">
+              {wardrobeTab === "recommended" ? "ИИ пока не нашёл подходящих товаров" : "Нет товаров"}
             </div>
           ) : (
-            filteredProducts.map((product) => {
+            (wardrobeTab === "recommended" ? filteredRecommendedProducts : filteredProducts).map((product) => {
               const isSelected = selectedItems.some((p) => p.id === product.id)
               const imgUrl = getProductImage(product)
 
