@@ -88,11 +88,37 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [autoCapture, setAutoCapture] = useState(false)
 
   // ── Lifetime quota ────────────────────────────────────────────────────────
   const [triesUsed, setTriesUsed] = useState<number | null>(null)
   const [triesLimit, setTriesLimit] = useState<number>(5)
   const triesLeft = triesUsed !== null ? Math.max(0, triesLimit - triesUsed) : null
+
+  // ── Color Type ───────────────────────────────────────────────────────────
+  type ColorTypeStep = "closed" | "camera" | "analyzing" | "result"
+  const [ctStep, setCtStep] = useState<ColorTypeStep>("closed")
+  const [ctPhoto, setCtPhoto] = useState<string | null>(null)
+  const [ctCameraReady, setCtCameraReady] = useState(false)
+  const [ctCountdown, setCtCountdown] = useState<number | null>(null)
+  const [ctResult, setCtResult] = useState<{
+    colorSeason: string
+    eyeColor: string
+    hairColor: string
+    skinTone: string
+    faceShape: string
+    features: string
+    recommendedColors: string[]
+    avoidColors: string[]
+    styleRecommendation: string
+    fitRecommendation: string
+    recommendedItemIds: string[]
+  } | null>(null)
+  const [ctError, setCtError] = useState<string | null>(null)
+  const ctVideoRef = useRef<HTMLVideoElement>(null)
+  const ctCanvasRef = useRef<HTMLCanvasElement>(null)
+  const ctStreamRef = useRef<MediaStream | null>(null)
+  const ctCountdownRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Wardrobe ──────────────────────────────────────────────────────────────
   const [activeCategory, setActiveCategory] = useState("all")
@@ -206,6 +232,106 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
       if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current)
     }
   }, [])
+
+  // ── Color Type: camera lifecycle ─────────────────────────────────────────
+  useEffect(() => {
+    if (ctStep !== "camera") {
+      ctStreamRef.current?.getTracks().forEach((t) => t.stop())
+      ctStreamRef.current = null
+      return
+    }
+    setCtCameraReady(false)
+    setCtError(null)
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 720 } } })
+      .then((stream) => {
+        ctStreamRef.current = stream
+        if (ctVideoRef.current) ctVideoRef.current.srcObject = stream
+      })
+      .catch(() => setCtError("Нет доступа к камере"))
+    return () => {
+      if (ctCountdownRef.current) clearTimeout(ctCountdownRef.current)
+      ctStreamRef.current?.getTracks().forEach((t) => t.stop())
+      ctStreamRef.current = null
+    }
+  }, [ctStep])
+
+  function ctCapture() {
+    if (!ctCameraReady || ctCountdown !== null) return
+    setCtCountdown(3)
+    const tick = (n: number) => {
+      if (n <= 0) {
+        // Take photo
+        if (!ctVideoRef.current || !ctCanvasRef.current) return
+        const v = ctVideoRef.current
+        const c = ctCanvasRef.current
+        c.width = v.videoWidth; c.height = v.videoHeight
+        const ctx = c.getContext("2d")!
+        ctx.translate(c.width, 0); ctx.scale(-1, 1)
+        ctx.drawImage(v, 0, 0)
+        const dataUrl = c.toDataURL("image/jpeg", 0.85)
+        setCtPhoto(dataUrl)
+        setCtCountdown(null)
+        ctStreamRef.current?.getTracks().forEach((t) => t.stop())
+        ctStreamRef.current = null
+        analyzeColorType(dataUrl)
+        return
+      }
+      ctCountdownRef.current = setTimeout(() => {
+        setCtCountdown(n > 0 ? n - 1 : null)
+        tick(n - 1)
+      }, 1000)
+    }
+    tick(3)
+  }
+
+  async function analyzeColorType(photo: string) {
+    setCtStep("analyzing")
+    setCtError(null)
+    try {
+      const res = await fetch("/api/color-type", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          facePhotoBase64: photo,
+          catalogItems: products.map((p) => ({ id: p.id, name: p.name, category: p.category ?? "" })),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setCtError(data.error ?? "Ошибка анализа")
+        setCtStep("camera")
+      } else {
+        setCtResult(data.analysis)
+        setCtStep("result")
+      }
+    } catch {
+      setCtError("Ошибка соединения")
+      setCtStep("camera")
+    }
+  }
+
+  function ctApplyItems() {
+    if (!ctResult) return
+    const recommended = products.filter((p) => ctResult.recommendedItemIds.includes(p.id))
+    if (recommended.length > 0) setSelectedItems(recommended)
+    setCtStep("closed")
+    // Go to full-body camera for try-on and auto-start countdown
+    setStep("camera")
+    setGeneratedImage(null)
+    prevItemKeysRef.current = ""
+    setAutoCapture(true)
+  }
+
+  // Auto-start 5-sec countdown when camera is ready after ctApplyItems
+  useEffect(() => {
+    if (autoCapture && cameraReady && !cameraError) {
+      setAutoCapture(false)
+      capturePhoto()
+    }
+  // capturePhoto is stable within this render; autoCapture/cameraReady/cameraError drive this
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCapture, cameraReady, cameraError])
 
   // ── Auto-generate when selected items change ───────────────────────────────
   const generateOutfit = useCallback(async (photo: string, items: StudioProduct[]) => {
@@ -604,6 +730,14 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
               </span>
             )}
           </div>
+          {/* Color type button */}
+          <button
+            onClick={() => { setCtStep("camera"); setCtError(null); setCtResult(null) }}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 mb-2 rounded-lg bg-gradient-to-r from-pink-600/20 to-purple-600/20 border border-pink-500/30 text-pink-300 text-xs font-medium hover:from-pink-600/40 hover:to-purple-600/40 transition"
+          >
+            <span>🎨</span>
+            Определить цветотип
+          </button>
           {/* Search */}
           <div className="relative">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -708,6 +842,256 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white text-sm font-medium shadow-2xl animate-fade-in">
           {toast}
+        </div>
+      )}
+
+      {/* ── Color Type Modal Overlay ────────────────────────────────────────── */}
+      {ctStep !== "closed" && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black">
+
+          {/* Top bar */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🎨</span>
+              <span className="text-white font-semibold text-sm">Цветотип</span>
+            </div>
+            <button
+              onClick={() => {
+                setCtStep("closed")
+                ctStreamRef.current?.getTracks().forEach((t) => t.stop())
+                ctStreamRef.current = null
+              }}
+              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* ── camera step ─────────────────────────────────────────────────── */}
+          {ctStep === "camera" && (
+            <div className="flex flex-col flex-1 min-h-0">
+              <div className="relative flex-1 bg-black min-h-0">
+                <video
+                  ref={ctVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  onCanPlay={() => setCtCameraReady(true)}
+                  className="w-full h-full object-cover [transform:scaleX(-1)]"
+                />
+
+                {/* Loading */}
+                {!ctCameraReady && !ctError && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black">
+                    <div className="w-8 h-8 border-2 border-pink-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+
+                {/* Camera error */}
+                {ctError && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black p-8 text-center">
+                    <p className="text-red-400 text-sm">{ctError}</p>
+                  </div>
+                )}
+
+                {/* Face guide oval */}
+                {ctCameraReady && ctCountdown === null && (
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <svg className="w-2/3 max-w-xs opacity-30" viewBox="0 0 100 130" fill="none" stroke="white" strokeWidth="1.5">
+                      <ellipse cx="50" cy="60" rx="38" ry="52" />
+                    </svg>
+                  </div>
+                )}
+
+                {/* Instruction */}
+                {ctCameraReady && ctCountdown === null && (
+                  <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/70 to-transparent px-4 pt-5 pb-10 text-center pointer-events-none">
+                    <p className="text-white font-semibold text-base">Сфотографируйте лицо</p>
+                    <p className="text-white/60 text-sm mt-1">Разместите лицо в центре кадра, смотрите в камеру</p>
+                  </div>
+                )}
+
+                {/* Countdown overlay */}
+                {ctCountdown !== null && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 pointer-events-none">
+                    <span className="text-[110px] font-bold text-white leading-none drop-shadow-2xl">{ctCountdown || "📸"}</span>
+                    {ctCountdown > 0 && (
+                      <p className="mt-3 text-white/70 text-sm">Не двигайтесь…</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <canvas ref={ctCanvasRef} className="hidden" />
+
+              {/* Controls */}
+              <div className="flex items-center justify-center gap-6 px-6 py-5 bg-black/80 flex-shrink-0">
+                <button
+                  onClick={ctCapture}
+                  disabled={!ctCameraReady || !!ctError || ctCountdown !== null}
+                  className="rounded-full border-4 border-pink-400/50 flex items-center justify-center disabled:opacity-40 hover:border-pink-400/80 transition active:scale-95"
+                  style={{ width: 72, height: 72 }}
+                >
+                  <div className="w-14 h-14 rounded-full bg-white" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── analyzing step ──────────────────────────────────────────────── */}
+          {ctStep === "analyzing" && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
+              {ctPhoto && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={ctPhoto} alt="face" className="w-28 h-28 rounded-full object-cover border-2 border-pink-500/50 opacity-80" />
+              )}
+              <div className="relative">
+                <div className="w-16 h-16 border-2 border-pink-500/30 border-t-pink-500 rounded-full animate-spin" />
+                <div className="absolute inset-2 border-2 border-purple-500/30 border-b-purple-500 rounded-full animate-spin" style={{ animationDirection: "reverse", animationDuration: "0.9s" }} />
+              </div>
+              <div className="text-center">
+                <p className="text-white font-semibold text-base">ИИ анализирует ваш цветотип…</p>
+                <p className="text-white/50 text-sm mt-1">Это займёт несколько секунд</p>
+              </div>
+            </div>
+          )}
+
+          {/* ── result step ─────────────────────────────────────────────────── */}
+          {ctStep === "result" && ctResult && (() => {
+            const seasonMeta: Record<string, { emoji: string; bg: string; text: string }> = {
+              "Зима": { emoji: "❄️", bg: "from-blue-800/60 to-indigo-900/60", text: "text-blue-200" },
+              "Весна": { emoji: "🌸", bg: "from-yellow-700/60 to-pink-800/60", text: "text-yellow-200" },
+              "Лето": { emoji: "☀️", bg: "from-pink-800/60 to-purple-900/60", text: "text-pink-200" },
+              "Осень": { emoji: "🍂", bg: "from-orange-800/60 to-amber-900/60", text: "text-orange-200" },
+            }
+            const meta = seasonMeta[ctResult.colorSeason] ?? { emoji: "🎨", bg: "from-purple-800/60 to-indigo-900/60", text: "text-purple-200" }
+            const recommendedItems = products.filter((p) => ctResult.recommendedItemIds.includes(p.id))
+
+            return (
+              <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4 space-y-4">
+
+                {/* Season badge */}
+                <div className={`rounded-2xl bg-gradient-to-br ${meta.bg} border border-white/10 px-5 py-4 flex items-center gap-4`}>
+                  <span className="text-4xl">{meta.emoji}</span>
+                  <div>
+                    <p className="text-white/50 text-xs uppercase tracking-widest mb-0.5">Ваш цветотип</p>
+                    <p className={`text-2xl font-bold ${meta.text}`}>{ctResult.colorSeason}</p>
+                  </div>
+                  {ctPhoto && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={ctPhoto} alt="you" className="w-14 h-14 rounded-full object-cover border-2 border-white/20 ml-auto" />
+                  )}
+                </div>
+
+                {/* Physical traits */}
+                <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <p className="text-white/40 text-[11px] uppercase tracking-wide">Глаза</p>
+                    <p className="text-white font-medium mt-0.5">{ctResult.eyeColor}</p>
+                  </div>
+                  <div>
+                    <p className="text-white/40 text-[11px] uppercase tracking-wide">Волосы</p>
+                    <p className="text-white font-medium mt-0.5">{ctResult.hairColor}</p>
+                  </div>
+                  <div>
+                    <p className="text-white/40 text-[11px] uppercase tracking-wide">Тон кожи</p>
+                    <p className="text-white font-medium mt-0.5">{ctResult.skinTone}</p>
+                  </div>
+                  <div>
+                    <p className="text-white/40 text-[11px] uppercase tracking-wide">Форма лица</p>
+                    <p className="text-white font-medium mt-0.5">{ctResult.faceShape}</p>
+                  </div>
+                </div>
+
+                {/* Recommended colors */}
+                {ctResult.recommendedColors.length > 0 && (
+                  <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                    <p className="text-white/50 text-[11px] uppercase tracking-widest mb-2">Ваши цвета ✅</p>
+                    <div className="flex flex-wrap gap-2">
+                      {ctResult.recommendedColors.map((c) => (
+                        <span key={c} className="px-2.5 py-1 rounded-full bg-green-500/15 border border-green-500/30 text-green-300 text-xs">{c}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Avoid colors */}
+                {ctResult.avoidColors.length > 0 && (
+                  <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                    <p className="text-white/50 text-[11px] uppercase tracking-widest mb-2">Избегайте ❌</p>
+                    <div className="flex flex-wrap gap-2">
+                      {ctResult.avoidColors.map((c) => (
+                        <span key={c} className="px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-300 text-xs">{c}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Style recommendation */}
+                {ctResult.styleRecommendation && (
+                  <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                    <p className="text-white/50 text-[11px] uppercase tracking-widest mb-1.5">Стиль</p>
+                    <p className="text-white/80 text-sm leading-relaxed">{ctResult.styleRecommendation}</p>
+                  </div>
+                )}
+
+                {/* Fit recommendation */}
+                {ctResult.fitRecommendation && (
+                  <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                    <p className="text-white/50 text-[11px] uppercase tracking-widest mb-1.5">Фасоны и силуэты</p>
+                    <p className="text-white/80 text-sm leading-relaxed">{ctResult.fitRecommendation}</p>
+                  </div>
+                )}
+
+                {/* Recommended catalog items */}
+                {recommendedItems.length > 0 && (
+                  <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                    <p className="text-white/50 text-[11px] uppercase tracking-widest mb-3">Подойдёт вам из каталога ⭐</p>
+                    <div className="flex gap-3 overflow-x-auto pb-1">
+                      {recommendedItems.map((item) => {
+                        const imgUrl = getProductImage(item)
+                        return (
+                          <div key={item.id} className="flex-shrink-0 w-24">
+                            <div className="w-24 h-32 rounded-xl overflow-hidden bg-white/10 border border-white/10 mb-1.5">
+                              {imgUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={imgUrl} alt={item.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-white/20 font-bold text-xl">{item.name[0]}</div>
+                              )}
+                            </div>
+                            <p className="text-white/80 text-[11px] font-medium leading-tight line-clamp-2">{item.name}</p>
+                            <p className="text-violet-300 text-[10px] mt-0.5">{formatPrice(item.price, item.currency)}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-3 pt-1 pb-2">
+                  <button
+                    onClick={() => { setCtStep("camera"); setCtResult(null); setCtPhoto(null); setCtCameraReady(false) }}
+                    className="flex-1 py-3 rounded-xl border border-white/20 text-white/70 text-sm font-medium hover:bg-white/5 transition"
+                  >
+                    📷 Переснять
+                  </button>
+                  <button
+                    onClick={() => {
+                      ctApplyItems()
+                      showToast("📸 Сделайте фото в полный рост для примерки!")
+                    }}
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 text-white text-sm font-semibold hover:opacity-90 transition"
+                  >
+                    ✨ Применить образ
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>
