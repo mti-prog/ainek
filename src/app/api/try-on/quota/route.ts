@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { apiError, apiOk } from "@/lib/api"
 import { getTenantBySlug } from "@/lib/tenant"
 
-const USER_LIFETIME_LIMIT = 5
+const USER_LIFETIME_LIMIT = 3
 
 export async function GET(request: Request) {
   const supabase = await createSupabaseServerClient()

@@ -10,7 +10,7 @@ import { logEvent } from "@/lib/logging"
 const AI_COST_USD = 0.0670
 
 // Permanent per-user try-on limit — never resets
-const USER_LIFETIME_TRYON_LIMIT = 5
+const USER_LIFETIME_TRYON_LIMIT = 3
 
 export async function POST(request: NextRequest) {
   // ── 1. Auth ───────────────────────────────────────────────────────────────

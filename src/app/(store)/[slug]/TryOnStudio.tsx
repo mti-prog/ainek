@@ -23,7 +23,7 @@ interface Props {
 }
 
 // Must match USER_LIFETIME_TRYON_LIMIT in /api/try-on/route.ts
-const USER_TRYON_LIMIT = 5
+const USER_TRYON_LIMIT = 3
 
 const CATEGORIES = [
   { key: "all",         label: "Все" },
