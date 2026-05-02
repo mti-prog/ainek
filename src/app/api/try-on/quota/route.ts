@@ -13,14 +13,14 @@ export async function GET(request: Request) {
     return apiError("Unauthorized", 401, "UNAUTHORIZED")
   }
 
-  // Count real (non-cached) lifetime generations for this user
-  const { count: usedCount } = await supabaseAdmin
-    .from("try_on_sessions")
-    .select("id", { count: "exact", head: true })
+  // Read atomic counter from user_tryon_counts — persists across refreshes
+  const { data: countRow } = await supabaseAdmin
+    .from("user_tryon_counts")
+    .select("tryon_count")
     .eq("user_id", user.id)
-    .eq("is_cached", false)
+    .single()
 
-  const used = usedCount ?? 0
+  const used = countRow?.tryon_count ?? 0
   const remaining = Math.max(0, USER_LIFETIME_LIMIT - used)
 
   const url = new URL(request.url)

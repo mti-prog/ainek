@@ -24,19 +24,21 @@ export async function POST(request: NextRequest) {
   const userId = user.id
 
   // ── 1b. Permanent user lifetime limit ────────────────────────────────────
-  // Count only real generations (not cache hits) — permanent, never resets
-  const { count: lifetimeCount } = await supabaseAdmin
-    .from("try_on_sessions")
-    .select("id", { count: "exact", head: true })
+  // Read from user_tryon_counts — atomic counter that never resets on refresh
+  const { data: countRow } = await supabaseAdmin
+    .from("user_tryon_counts")
+    .select("tryon_count")
     .eq("user_id", userId)
-    .eq("is_cached", false)
+    .single()
 
-  if ((lifetimeCount ?? 0) >= USER_LIFETIME_TRYON_LIMIT) {
+  const currentCount = countRow?.tryon_count ?? 0
+
+  if (currentCount >= USER_LIFETIME_TRYON_LIMIT) {
     return apiError(
       `Лимит примерок исчерпан. Вам доступно ${USER_LIFETIME_TRYON_LIMIT} бесплатных примерок.`,
       429,
       "USER_LIFETIME_LIMIT_REACHED",
-      { used: lifetimeCount, limit: USER_LIFETIME_TRYON_LIMIT }
+      { used: currentCount, limit: USER_LIFETIME_TRYON_LIMIT }
     )
   }
 
@@ -211,14 +213,17 @@ export async function POST(request: NextRequest) {
     .select("id")
     .single()
 
-  // ── 7. Increment tenant usage ─────────────────────────────────────────────
+  // ── 7. Increment user lifetime counter (atomic, persists across refreshes) ──
+  await supabaseAdmin.rpc("increment_user_tryon_count", { p_user_id: userId })
+
+  // ── 8. Increment tenant usage ─────────────────────────────────────────────
   if (effectiveTenantId) {
     await supabaseAdmin.rpc("increment_tenant_try_on_used", {
       p_tenant_id: effectiveTenantId,
     })
   }
 
-  // ── 8. Cache result (only when we have a stable product ID) ──────────────
+  // ── 9. Cache result (only when we have a stable product ID) ──────────────
   if (cacheKey) {
     await setCachedTryOn(cacheKey, photoHash, result.imageBase64)
   }
