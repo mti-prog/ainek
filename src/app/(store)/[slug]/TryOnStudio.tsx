@@ -96,6 +96,7 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [autoCapture, setAutoCapture] = useState(false)
+  const [wardrobeOpen, setWardrobeOpen] = useState(false)
   const [wardrobeTab, setWardrobeTab] = useState<"catalog" | "recommended">("catalog")
   const [styleRecommendations, setStyleRecommendations] = useState<StyleRecommendations | null>(null)
   const [styleRecommendationsLoading, setStyleRecommendationsLoading] = useState(false)
@@ -680,169 +681,197 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   }
 
   // ═════════════════════════════════════════════════════════════════════════════
-  // RENDER — STUDIO STEP
+  // RENDER — STUDIO STEP  (full-screen photo + bottom-sheet wardrobe)
   // ═════════════════════════════════════════════════════════════════════════════
+  const PEEK = 84 // px always visible when sheet is collapsed
+
   return (
-    <div className="flex flex-col md:flex-row overflow-hidden" style={{ height: "calc(100vh - 65px)" }}>
+    <div className="relative overflow-hidden bg-black" style={{ height: "calc(100vh - 65px)" }}>
 
-      {/* ── TOP / LEFT PANEL: Try-on result ────────────────────────────────── */}
-      <div className="flex flex-col p-2 gap-2 min-w-0 flex-shrink-0
-                      h-[46%] md:h-auto md:flex-1 md:min-h-0">
-
-        {/* Result image area */}
-        <div className="relative flex-1 rounded-2xl overflow-hidden bg-black/50 min-h-0">
-          {(generatedImage || userPhoto) && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={generatedImage ?? userPhoto ?? ""}
-              alt="Примерка"
-              className="w-full h-full object-contain"
-              style={{ opacity: generatedImage ? 1 : 0.65 }}
-            />
-          )}
-
-          {/* Generating overlay */}
-          {isGenerating && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm gap-3">
-              <div className="relative">
-                <div className="w-14 h-14 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
-                <div className="absolute inset-2 border-2 border-blue-500/30 border-b-blue-500 rounded-full animate-spin" style={{ animationDirection: "reverse", animationDuration: "0.8s" }} />
-              </div>
-              <p className="text-white/70 text-sm font-medium">Примеряем наряд…</p>
-              <p className="text-white/40 text-xs">Gemini AI обрабатывает</p>
+      {/* ── FULL-SCREEN PHOTO ──────────────────────────────────────────────── */}
+      <div
+        className="absolute inset-0"
+        onClick={() => { if (wardrobeOpen) setWardrobeOpen(false) }}
+      >
+        {(generatedImage || userPhoto) ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={generatedImage ?? userPhoto ?? ""}
+            alt="Примерка"
+            className="w-full h-full object-contain"
+            style={{ opacity: generatedImage ? 1 : 0.65 }}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="text-center px-6 pointer-events-none">
+              <svg className="w-12 h-12 text-white/10 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+              <p className="text-white/20 text-sm">Откройте гардероб ↓</p>
             </div>
-          )}
-
-          {/* Error */}
-          {generateError && !isGenerating && (
-            <div className="absolute bottom-3 left-3 right-3 bg-red-900/80 backdrop-blur-sm border border-red-500/40 rounded-xl px-4 py-2.5 text-red-300 text-sm text-center">
-              {generateError}
-            </div>
-          )}
-
-          {/* Empty hint */}
-          {!isGenerating && !generatedImage && selectedItems.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="text-center px-6">
-                <svg className="w-10 h-10 text-white/10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                </svg>
-                <p className="text-white/20 text-sm">Выберите одежду →</p>
-              </div>
-            </div>
-          )}
-
-          {/* Retake */}
-          <button
-            onClick={() => { setStep("camera"); setGeneratedImage(null); prevItemKeysRef.current = "" }}
-            className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-white/60 text-xs hover:text-white transition"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            Переснять
-          </button>
-        </div>
-
-        {/* Selected items strip */}
-        {selectedItems.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto py-0.5 flex-shrink-0">
-            {selectedItems.map((item) => (
-              <div key={item.id} className="relative flex-shrink-0 group/chip">
-                <div className="w-14 h-14 rounded-xl overflow-hidden border border-violet-500/50 bg-white/10">
-                  {getProductImage(item) ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={getProductImage(item)} alt={item.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-white/30 text-xs font-bold">
-                      {item.name[0]}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => removeItem(item.id)}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center transition shadow-md"
-                >
-                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ))}
           </div>
         )}
 
-        {/* Quota warning banner */}
-        {triesLeft !== null && triesLeft <= 2 && (
-          <div className={`flex-shrink-0 rounded-xl px-3 py-2 text-xs text-center ${
-            triesLeft === 0
-              ? "bg-red-500/15 border border-red-500/30 text-red-300"
-              : "bg-yellow-500/10 border border-yellow-500/20 text-yellow-300"
-          }`}>
+        {/* Generating overlay */}
+        {isGenerating && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm gap-3" onClick={(e) => e.stopPropagation()}>
+            <div className="relative">
+              <div className="w-14 h-14 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+              <div className="absolute inset-2 border-2 border-blue-500/30 border-b-blue-500 rounded-full animate-spin" style={{ animationDirection: "reverse", animationDuration: "0.8s" }} />
+            </div>
+            <p className="text-white/70 text-sm font-medium">Примеряем наряд…</p>
+            <p className="text-white/40 text-xs">Gemini AI обрабатывает</p>
+          </div>
+        )}
+
+        {/* Error — floats above the sheet */}
+        {generateError && !isGenerating && (
+          <div
+            className="absolute left-3 right-3 bg-red-900/80 backdrop-blur-sm border border-red-500/40 rounded-xl px-4 py-2.5 text-red-300 text-sm text-center"
+            style={{ bottom: PEEK + 12 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {generateError}
+          </div>
+        )}
+
+        {/* Quota warning — floats above the sheet */}
+        {triesLeft !== null && triesLeft <= 2 && !generateError && (
+          <div
+            className={`absolute left-3 right-3 rounded-xl px-3 py-1.5 text-xs text-center ${
+              triesLeft === 0
+                ? "bg-red-500/20 border border-red-500/30 text-red-300"
+                : "bg-yellow-500/10 border border-yellow-500/20 text-yellow-300"
+            }`}
+            style={{ bottom: PEEK + 12 }}
+            onClick={(e) => e.stopPropagation()}
+          >
             {triesLeft === 0
-              ? `Бесплатные примерки закончились. Доступно ${triesLimit} примерок на аккаунт.`
+              ? `Бесплатные примерки закончились. Доступно ${triesLimit} на аккаунт.`
               : `Осталось ${triesLeft} бесплатных примерк${triesLeft === 1 ? "а" : "и"} из ${triesLimit}`}
           </div>
         )}
 
-        {/* Action buttons */}
-        <div className="flex gap-2 flex-shrink-0">
-          <button
-            onClick={saveOutfit}
-            disabled={selectedItems.length === 0}
-            className="flex items-center justify-center gap-1.5 flex-1 py-2 md:py-2.5 rounded-xl border border-violet-500/40 text-violet-400 text-xs md:text-sm font-medium hover:bg-violet-500/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
-          >
-            <svg className="w-3.5 h-3.5 md:w-4 md:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-            </svg>
-            <span className="hidden sm:inline">Сохранить стиль</span>
-            <span className="sm:hidden">Сохранить</span>
-          </button>
-          <button
-            onClick={addAllToCart}
-            disabled={selectedItems.length === 0}
-            className="flex items-center justify-center gap-1.5 flex-1 py-2 md:py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white text-xs md:text-sm font-semibold hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition"
-          >
-            <svg className="w-3.5 h-3.5 md:w-4 md:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-            </svg>
-            В корзину{selectedItems.length > 0 && ` (${selectedItems.length})`}
-          </button>
-        </div>
+        {/* Retake — top left */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setStep("camera"); setGeneratedImage(null); prevItemKeysRef.current = "" }}
+          className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-white/60 text-xs hover:text-white transition"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Переснять
+        </button>
       </div>
 
-      {/* ── BOTTOM / RIGHT PANEL: Wardrobe ─────────────────────────────────── */}
-      <div className="flex-1 md:flex-none md:w-64 lg:md:w-72
-                      border-t md:border-t-0 md:border-l border-white/10
-                      flex flex-col min-h-0 overflow-hidden">
+      {/* ── BOTTOM SHEET: Wardrobe ─────────────────────────────────────────── */}
+      <div
+        className="absolute left-0 right-0 bottom-0 bg-[#0d0d10] rounded-t-3xl border-t border-white/10 flex flex-col overflow-hidden transition-transform duration-300 ease-out"
+        style={{
+          height: "80vh",
+          transform: wardrobeOpen ? "translateY(0)" : `translateY(calc(100% - ${PEEK}px))`,
+        }}
+      >
+        {/* ── HANDLE + COLLAPSED ACTION BAR ────────────────────────────────── */}
+        <button
+          className="flex-shrink-0 w-full pt-2.5 pb-2.5 px-4"
+          onClick={() => setWardrobeOpen((o) => !o)}
+        >
+          {/* Drag handle */}
+          <div className="w-10 h-[3px] rounded-full bg-white/25 mx-auto mb-2.5" />
 
-        {/* Header */}
-        <div className="px-3 py-2.5 border-b border-white/10 flex-shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-white/50 text-[11px] font-semibold uppercase tracking-widest">Гардероб</p>
-            {/* Try-on counter — always visible */}
+          {/* Row: label | badge | chips | save | cart | chevron */}
+          <div className="flex items-center gap-2 h-9">
+            <span className="text-white/50 text-[10px] font-bold uppercase tracking-widest flex-shrink-0">Гардероб</span>
+
             {triesLeft !== null && (
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                triesLeft === 0
-                  ? "bg-red-500/20 text-red-400"
-                  : triesLeft <= 2
-                  ? "bg-yellow-500/20 text-yellow-400"
-                  : "bg-violet-500/20 text-violet-300"
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                triesLeft === 0 ? "bg-red-500/20 text-red-400"
+                : triesLeft <= 2 ? "bg-yellow-500/20 text-yellow-400"
+                : "bg-violet-500/20 text-violet-300"
               }`}>
-                {triesLeft === 0 ? "Лимит исчерпан" : `${triesLeft} из ${triesLimit} примерок`}
+                {triesLeft === 0 ? "Лимит" : `${triesLeft}/${triesLimit}`}
               </span>
             )}
+
+            {/* Selected chips — horizontal scroll */}
+            <div className="flex-1 min-w-0 overflow-hidden">
+              {selectedItems.length > 0 ? (
+                <div className="flex gap-1.5 overflow-x-auto">
+                  {selectedItems.map((item) => {
+                    const img = getProductImage(item)
+                    return (
+                      <div
+                        key={item.id}
+                        className="relative flex-shrink-0 w-8 h-8 rounded-lg overflow-hidden border border-violet-500/50 bg-white/10"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {img
+                          // eslint-disable-next-line @next/next/no-img-element
+                          ? <img src={img} alt={item.name} className="w-full h-full object-cover" />
+                          : <span className="text-white/30 text-[8px] font-bold flex items-center justify-center h-full">{item.name[0]}</span>
+                        }
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeItem(item.id) }}
+                          className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-red-500 flex items-center justify-center"
+                        >
+                          <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-white/20 text-[10px] truncate">Выберите вещи для примерки</p>
+              )}
+            </div>
+
+            {/* Save */}
+            <button
+              onClick={(e) => { e.stopPropagation(); saveOutfit() }}
+              disabled={selectedItems.length === 0}
+              className="flex-shrink-0 w-8 h-8 rounded-xl border border-violet-500/30 flex items-center justify-center text-violet-400 hover:bg-violet-500/10 disabled:opacity-30 transition"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </button>
+
+            {/* Cart */}
+            <button
+              onClick={(e) => { e.stopPropagation(); addAllToCart() }}
+              disabled={selectedItems.length === 0}
+              className="flex-shrink-0 flex items-center gap-1 px-2.5 h-8 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white text-[11px] font-semibold disabled:opacity-30 transition"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+              </svg>
+              {selectedItems.length > 0 ? `(${selectedItems.length})` : "Корзина"}
+            </button>
+
+            {/* Chevron */}
+            <svg
+              className={`w-4 h-4 text-white/30 flex-shrink-0 transition-transform duration-300 ${wardrobeOpen ? "rotate-180" : ""}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
           </div>
-          {/* Color type button */}
+        </button>
+
+        {/* ── EXPANDED CONTENT ────────────────────────────────────────────── */}
+
+        {/* Colortype + Search */}
+        <div className="px-3 pt-1 pb-2 flex-shrink-0 border-b border-white/10 space-y-2">
           <button
             onClick={() => { setCtStep("camera"); setCtError(null); setCtResult(null) }}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 mb-2 rounded-lg bg-gradient-to-r from-pink-600/20 to-purple-600/20 border border-pink-500/30 text-pink-300 text-xs font-medium hover:from-pink-600/40 hover:to-purple-600/40 transition"
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-gradient-to-r from-pink-600/20 to-purple-600/20 border border-pink-500/30 text-pink-300 text-xs font-medium hover:from-pink-600/40 hover:to-purple-600/40 transition"
           >
-            <span>🎨</span>
-            Определить цветотип
+            <span>🎨</span> Определить цветотип
           </button>
-          {/* Search */}
           <div className="relative">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -857,42 +886,29 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
           </div>
         </div>
 
-        {/* Main tabs */}
-        <div className="flex gap-1 px-2 py-2 border-b border-white/10 flex-shrink-0">
+        {/* Tabs */}
+        <div className="flex gap-1 px-2 py-2 flex-shrink-0 border-b border-white/10">
           <button
             onClick={() => setWardrobeTab("catalog")}
-            className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              wardrobeTab === "catalog"
-                ? "bg-violet-600 text-white"
-                : "bg-white/10 text-white/60 hover:bg-white/15"
-            }`}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${wardrobeTab === "catalog" ? "bg-violet-600 text-white" : "bg-white/10 text-white/60 hover:bg-white/15"}`}
           >
             Каталог
           </button>
           <button
             onClick={() => setWardrobeTab("recommended")}
-            className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              wardrobeTab === "recommended"
-                ? "bg-emerald-600 text-white"
-                : "bg-white/10 text-white/60 hover:bg-white/15"
-            }`}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${wardrobeTab === "recommended" ? "bg-emerald-600 text-white" : "bg-white/10 text-white/60 hover:bg-white/15"}`}
           >
-            Рекомендуемые
-            {styleRecommendations?.recommendedItemIds.length ? ` (${styleRecommendations.recommendedItemIds.length})` : ""}
+            Рекомендуемые{styleRecommendations?.recommendedItemIds.length ? ` (${styleRecommendations.recommendedItemIds.length})` : ""}
           </button>
         </div>
 
-        {/* Category tabs */}
+        {/* Category pills */}
         <div className="flex gap-1 px-2 py-2 overflow-x-auto flex-shrink-0 border-b border-white/10">
           {CATEGORIES.map((cat) => (
             <button
               key={cat.key}
               onClick={() => setActiveCategory(cat.key)}
-              className={`px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap font-medium transition ${
-                activeCategory === cat.key
-                  ? "bg-violet-600 text-white"
-                  : "bg-white/10 text-white/60 hover:bg-white/15"
-              }`}
+              className={`px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap font-medium transition ${activeCategory === cat.key ? "bg-violet-600 text-white" : "bg-white/10 text-white/60 hover:bg-white/15"}`}
             >
               {cat.label}
             </button>
@@ -901,101 +917,60 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
 
         {/* Products grid */}
         <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="p-2 grid grid-cols-3 md:grid-cols-2 gap-2">
-          {wardrobeTab === "recommended" && styleRecommendations && (
-            <div className="col-span-2 mb-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2.5">
-              <p className="text-emerald-300 text-[11px] font-semibold uppercase tracking-widest mb-1">AI stylist</p>
-              <p className="text-white/80 text-xs leading-relaxed">{styleRecommendations.rationale}</p>
-              {styleRecommendations.stylingTips.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {styleRecommendations.stylingTips.map((tip) => (
-                    <span key={tip} className="px-2 py-1 rounded-full bg-white/10 text-white/70 text-[10px]">
-                      {tip}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <div className="p-2 grid grid-cols-3 gap-2">
+            {wardrobeTab === "recommended" && styleRecommendations && (
+              <div className="col-span-3 mb-1 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+                <p className="text-emerald-300 text-[11px] font-semibold uppercase tracking-widest mb-0.5">AI stylist</p>
+                <p className="text-white/80 text-xs leading-relaxed">{styleRecommendations.rationale}</p>
+              </div>
+            )}
 
-          {styleRecommendationsLoading && wardrobeTab === "recommended" ? (
-            <div className="col-span-2 py-10 text-center text-white/40 text-xs">
-              ИИ подбирает вещи к вашему образу…
-            </div>
-          ) : styleRecommendationsError && wardrobeTab === "recommended" ? (
-            <div className="col-span-2 py-10 text-center text-red-300 text-xs">
-              {styleRecommendationsError}
-            </div>
-          ) : wardrobeTab === "recommended" && selectedItems.length === 0 ? (
-            <div className="col-span-2 py-10 text-center text-white/30 text-xs">
-              Выберите вещь, и здесь появятся рекомендации ИИ
-            </div>
-          ) : (wardrobeTab === "recommended" ? filteredRecommendedProducts : filteredProducts).length === 0 ? (
-            <div className="col-span-2 py-10 text-center text-white/30 text-xs">
-              {wardrobeTab === "recommended" ? "ИИ пока не нашёл подходящих товаров" : "Нет товаров"}
-            </div>
-          ) : (
-            (wardrobeTab === "recommended" ? filteredRecommendedProducts : filteredProducts).map((product) => {
-              const isSelected = selectedItems.some((p) => p.id === product.id)
-              const imgUrl = getProductImage(product)
-
-              return (
-                <button
-                  key={product.id}
-                  onClick={() => toggleItem(product)}
-                  className={`relative rounded-xl overflow-hidden transition-all text-left ${
-                    isSelected
-                      ? "ring-2 ring-violet-500 scale-[0.96]"
-                      : "ring-1 ring-white/10 hover:ring-white/25 hover:scale-[0.98]"
-                  }`}
-                  style={{ aspectRatio: "3/4" }}
-                >
-                  {/* Product image */}
-                  {imgUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={imgUrl}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                      <span className="text-white/20 text-xl font-bold">{product.name[0]}</span>
+            {styleRecommendationsLoading && wardrobeTab === "recommended" ? (
+              <div className="col-span-3 py-8 text-center text-white/40 text-xs">ИИ подбирает вещи…</div>
+            ) : styleRecommendationsError && wardrobeTab === "recommended" ? (
+              <div className="col-span-3 py-8 text-center text-red-300 text-xs">{styleRecommendationsError}</div>
+            ) : wardrobeTab === "recommended" && selectedItems.length === 0 ? (
+              <div className="col-span-3 py-8 text-center text-white/30 text-xs">Выберите вещь, и появятся рекомендации ИИ</div>
+            ) : (wardrobeTab === "recommended" ? filteredRecommendedProducts : filteredProducts).length === 0 ? (
+              <div className="col-span-3 py-8 text-center text-white/30 text-xs">
+                {wardrobeTab === "recommended" ? "ИИ пока не нашёл подходящих товаров" : "Нет товаров"}
+              </div>
+            ) : (
+              (wardrobeTab === "recommended" ? filteredRecommendedProducts : filteredProducts).map((product) => {
+                const isSelected = selectedItems.some((p) => p.id === product.id)
+                const imgUrl = getProductImage(product)
+                return (
+                  <button
+                    key={product.id}
+                    onClick={() => toggleItem(product)}
+                    className={`relative rounded-xl overflow-hidden transition-all text-left ${isSelected ? "ring-2 ring-violet-500 scale-[0.96]" : "ring-1 ring-white/10 hover:ring-white/25 hover:scale-[0.98]"}`}
+                    style={{ aspectRatio: "3/4" }}
+                  >
+                    {imgUrl
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={imgUrl} alt={product.name} className="w-full h-full object-cover" />
+                      : <div className="w-full h-full bg-white/5 flex items-center justify-center"><span className="text-white/20 text-xl font-bold">{product.name[0]}</span></div>
+                    }
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2">
+                      <p className="text-white text-[11px] font-semibold leading-tight truncate">{product.name}</p>
+                      <p className="text-violet-300 text-[10px] mt-0.5">{formatPrice(product.price, product.currency)}</p>
                     </div>
-                  )}
-
-                  {/* Info overlay */}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2">
-                    <p className="text-white text-[11px] font-semibold leading-tight truncate">{product.name}</p>
-                    <p className="text-violet-300 text-[10px] mt-0.5">{formatPrice(product.price, product.currency)}</p>
-                  </div>
-
-                  {/* Selection checkmark */}
-                  {isSelected && (
-                    <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-violet-600 flex items-center justify-center shadow">
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                  )}
-                </button>
-              )
-            })
-          )}
-        </div>
-        </div>
-
-        {/* Footer: selected count */}
-        {selectedItems.length > 0 && (
-          <div className="border-t border-white/10 px-3 py-2 text-center flex-shrink-0">
-            <p className="text-white/40 text-xs">
-              Выбрано: <span className="text-violet-400 font-semibold">{selectedItems.length}</span>
-            </p>
+                    {isSelected && (
+                      <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-violet-600 flex items-center justify-center shadow">
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    )}
+                  </button>
+                )
+              })
+            )}
           </div>
-        )}
+        </div>
       </div>
 
-      {/* ── Toast notification ──────────────────────────────────────────────── */}
+      {/* ── Toast ──────────────────────────────────────────────────────────── */}
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white text-sm font-medium shadow-2xl animate-fade-in">
           {toast}
