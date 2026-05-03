@@ -77,6 +77,58 @@ export const importProductSchema = z.object({
 
 export type ImportProductPayload = z.infer<typeof importProductSchema>
 
+function normalizeImportedCategory(category?: string, productName?: string) {
+  const value = (category ?? "").trim().toLowerCase()
+  const name = (productName ?? "").trim().toLowerCase()
+
+  if (name.includes("sunglass") || name.includes("glasses") || name.includes("aviator")) {
+    return "accessories"
+  }
+
+  if (name.includes("suit") || name.includes("tracksuit")) {
+    return "suits"
+  }
+
+  if (
+    name.includes("shoe") ||
+    name.includes("shoes") ||
+    name.includes("sneaker") ||
+    name.includes("heel") ||
+    name.includes("slipper") ||
+    name.includes("boot")
+  ) {
+    return "shoes"
+  }
+
+  if (!value) return undefined
+
+  if (["top", "tops", "shirt", "shirts", "mens-shirts", "tshirt", "t-shirts", "womens-tops"].includes(value)) {
+    return "tops"
+  }
+
+  if (["bottom", "bottoms", "pants", "trousers", "jeans", "shorts", "skirts", "womens-skirts"].includes(value)) {
+    return "bottoms"
+  }
+
+  if (["dress", "dresses", "womens-dresses"].includes(value)) {
+    return "dresses"
+  }
+
+  if (["shoe", "shoes", "mens-shoes", "womens-shoes", "sneakers"].includes(value)) {
+    return "shoes"
+  }
+
+  if (["suit", "suits", "tracksuit"].includes(value)) {
+    return "suits"
+  }
+
+  if (["accessory", "accessories", "sunglasses", "glasses", "hat", "hats", "bags", "bag"].includes(value)) {
+    return "accessories"
+  }
+
+  return value
+}
+
 export function normalizeProductPayload(input: ProductPayload) {
   return {
     name: input.name,
@@ -178,7 +230,7 @@ export function normalizeImportedProduct(input: unknown) {
   return normalizeProductPayload({
     name,
     description: parsed.description,
-    category: parsed.category,
+    category: normalizeImportedCategory(parsed.category, name),
     subcategory: parsed.subcategory,
     brand: parsed.brand,
     price,

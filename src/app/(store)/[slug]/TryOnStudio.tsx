@@ -86,6 +86,7 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [cameraReady, setCameraReady] = useState(false)
   const [isMirrored, setIsMirrored] = useState(true)
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user")
   const [countdown, setCountdown] = useState<number | null>(null)
 
   // ── Try-on ────────────────────────────────────────────────────────────────
@@ -166,11 +167,13 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
     setCameraReady(false)
     setCameraError(null)
     setCountdown(null)
+    // Auto-mirror only for front camera
+    setIsMirrored(facingMode === "user")
 
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
+          video: { facingMode, width: { ideal: 1280 }, height: { ideal: 960 } },
         })
         streamRef.current = stream
         if (videoRef.current) {
@@ -193,7 +196,8 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
     }
-  }, [step])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, facingMode])
 
   function finishCapture() {
     if (!videoRef.current || !canvasRef.current) return
@@ -625,17 +629,25 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
         <canvas ref={canvasRef} className="hidden" />
 
         {/* Controls bar — bottom */}
-        <div className="flex items-center justify-center gap-6 px-6 py-4 bg-black/80 flex-shrink-0">
+        <div className="flex items-center justify-between px-8 py-4 bg-black/80 flex-shrink-0">
+
+          {/* Flip camera (front ↔ back) */}
           <button
-            onClick={() => setIsMirrored((m) => !m)}
-            className="flex items-center gap-1.5 text-white/40 text-xs hover:text-white/60 transition w-24 justify-end"
+            onClick={() => {
+              if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current)
+              setCountdown(null)
+              setCameraReady(false)
+              setFacingMode((m) => m === "user" ? "environment" : "user")
+            }}
+            className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition active:scale-95"
+            aria-label="Переключить камеру"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            {isMirrored ? "Зеркало вкл" : "Зеркало выкл"}
           </button>
 
+          {/* Shutter */}
           <button
             onClick={capturePhoto}
             disabled={!cameraReady || !!cameraError || countdown !== null}
@@ -646,11 +658,22 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
             <div className="w-14 h-14 rounded-full bg-white" />
           </button>
 
-          <div className="w-24 text-center">
-            {countdown !== null && (
-              <p className="text-white/60 text-xs">Снимок через {countdown} сек.</p>
-            )}
-          </div>
+          {/* Mirror toggle — только для фронтальной камеры */}
+          {facingMode === "user" ? (
+            <button
+              onClick={() => setIsMirrored((m) => !m)}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition active:scale-95 ${
+                isMirrored ? "bg-violet-600/40 text-violet-300" : "bg-white/10 text-white/50 hover:text-white/70"
+              }`}
+              aria-label={isMirrored ? "Зеркало вкл" : "Зеркало выкл"}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+            </button>
+          ) : (
+            <div className="w-12 h-12" />
+          )}
         </div>
       </div>
     )
@@ -660,10 +683,11 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
   // RENDER — STUDIO STEP
   // ═════════════════════════════════════════════════════════════════════════════
   return (
-    <div className="flex overflow-hidden" style={{ height: "calc(100vh - 65px)" }}>
+    <div className="flex flex-col md:flex-row overflow-hidden" style={{ height: "calc(100vh - 65px)" }}>
 
-      {/* ── LEFT PANEL: Try-on result ───────────────────────────────────────── */}
-      <div className="flex flex-col flex-1 p-3 min-w-0 gap-2">
+      {/* ── TOP / LEFT PANEL: Try-on result ────────────────────────────────── */}
+      <div className="flex flex-col p-2 gap-2 min-w-0 flex-shrink-0
+                      h-[46%] md:h-auto md:flex-1 md:min-h-0">
 
         {/* Result image area */}
         <div className="relative flex-1 rounded-2xl overflow-hidden bg-black/50 min-h-0">
@@ -767,28 +791,31 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
           <button
             onClick={saveOutfit}
             disabled={selectedItems.length === 0}
-            className="flex items-center justify-center gap-1.5 flex-1 py-2.5 rounded-xl border border-violet-500/40 text-violet-400 text-sm font-medium hover:bg-violet-500/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+            className="flex items-center justify-center gap-1.5 flex-1 py-2 md:py-2.5 rounded-xl border border-violet-500/40 text-violet-400 text-xs md:text-sm font-medium hover:bg-violet-500/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3.5 h-3.5 md:w-4 md:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
             </svg>
-            Сохранить стиль
+            <span className="hidden sm:inline">Сохранить стиль</span>
+            <span className="sm:hidden">Сохранить</span>
           </button>
           <button
             onClick={addAllToCart}
             disabled={selectedItems.length === 0}
-            className="flex items-center justify-center gap-1.5 flex-1 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white text-sm font-semibold hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition"
+            className="flex items-center justify-center gap-1.5 flex-1 py-2 md:py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white text-xs md:text-sm font-semibold hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3.5 h-3.5 md:w-4 md:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
             </svg>
-            В корзину {selectedItems.length > 0 && `(${selectedItems.length})`}
+            В корзину{selectedItems.length > 0 && ` (${selectedItems.length})`}
           </button>
         </div>
       </div>
 
-      {/* ── RIGHT PANEL: Wardrobe ───────────────────────────────────────────── */}
-      <div className="w-64 lg:w-72 border-l border-white/10 flex flex-col flex-shrink-0 overflow-hidden">
+      {/* ── BOTTOM / RIGHT PANEL: Wardrobe ─────────────────────────────────── */}
+      <div className="flex-1 md:flex-none md:w-64 lg:md:w-72
+                      border-t md:border-t-0 md:border-l border-white/10
+                      flex flex-col min-h-0 overflow-hidden">
 
         {/* Header */}
         <div className="px-3 py-2.5 border-b border-white/10 flex-shrink-0">
@@ -874,7 +901,7 @@ export default function TryOnStudio({ products, tenant, preloadedItems }: Props)
 
         {/* Products grid */}
         <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="p-2 grid grid-cols-2 gap-2">
+        <div className="p-2 grid grid-cols-3 md:grid-cols-2 gap-2">
           {wardrobeTab === "recommended" && styleRecommendations && (
             <div className="col-span-2 mb-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2.5">
               <p className="text-emerald-300 text-[11px] font-semibold uppercase tracking-widest mb-1">AI stylist</p>
